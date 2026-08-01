@@ -19,7 +19,7 @@ import re
 import shutil
 import subprocess
 from threading import BoundedSemaphore
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from uuid import uuid4
 import wave
 import xml.etree.ElementTree as ElementTree
@@ -29,8 +29,10 @@ import numpy as np
 from pypdf import PdfReader
 
 from app.core.settings import settings
-from app.services.auth_service import AuthenticatedUser
 from app.services.resource_service import ResourceService
+
+if TYPE_CHECKING:
+    from app.services.auth_service import AuthenticatedUser
 
 
 class MusicError(ValueError):

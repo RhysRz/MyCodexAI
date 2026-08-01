@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 import json
 import os
 import shutil
@@ -33,8 +34,14 @@ os.environ.setdefault("OLLAMA_API_KEY", "unused")
 os.environ["AGENT_STATE_ROOT"] = str(STATE_ROOT)
 os.environ["MUSIC_OMR_EXECUTABLE"] = ""
 
-from app.services.auth_service import AuthenticatedUser  # noqa: E402
 from app.services.music_service import MusicService  # noqa: E402
+
+
+@dataclass(frozen=True)
+class CloudMusicUser:
+    id: str
+    username: str
+    role: str
 
 
 def request_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -72,7 +79,7 @@ def download_source() -> bytes:
     return contents
 
 
-def encoded_artifacts(user: AuthenticatedUser, music_id: str) -> list[dict[str, str]]:
+def encoded_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, str]]:
     output: list[dict[str, str]] = []
     for kind in ("analysis", "midi", "chords", "tab"):
         try:
@@ -94,7 +101,7 @@ def encoded_artifacts(user: AuthenticatedUser, music_id: str) -> list[dict[str, 
 def main() -> int:
     callback("running")
     try:
-        user = AuthenticatedUser(USER_ID, "cloud-music-user", "user")
+        user = CloudMusicUser(USER_ID, "cloud-music-user", "user")
         track = MusicService.create(user, FILE_NAME, download_source())
         music_id = str(track["music_id"])
         analysis = MusicService.analyze(user, music_id)
