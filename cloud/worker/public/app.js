@@ -59,7 +59,7 @@ function showView(name) {
   if (name === "music") loadMusicJobs();
   if (name === "training") loadTraining();
   if (name === "system") loadSystem();
-  if (name === "admin") loadSessions();
+  if (name === "admin") Promise.all([loadSessions(), loadMfa()]).catch((error) => toast(error.message));
 }
 
 function addBubble(role, content, pending = false) {
@@ -251,9 +251,41 @@ async function loadSessions() {
   const list = $("#session-list"); list.replaceChildren();
   data.sessions.forEach((session) => {
     const card = element("article", "item-card");
-    card.append(element("h3", "", `${session.current ? "อุปกรณ์นี้ · " : ""}${session.device_label}`), element("p", "", `ใช้งานล่าสุด ${new Date(session.last_seen_at * 1000).toLocaleString("th-TH")}`));
+    card.append(element("h3", "", `${session.current ? "อุปกรณ์นี้ · " : ""}${session.device_label}`), element("p", "", `ใช้งานล่าสุด ${new Date(session.last_seen_at).toLocaleString("th-TH")}`));
     list.append(card);
   });
+}
+
+async function loadMfa() {
+  const status = await api("/api/auth/mfa");
+  $("#mfa-status").textContent = status.enabled
+    ? `เปิดใช้งานแล้ว · มีรหัสกู้คืนเหลือ ${status.recovery_codes_remaining} รหัส`
+    : status.pending ? "เริ่มตั้งค่าแล้ว แต่ยังไม่ได้ยืนยันรหัส" : "ยังไม่ได้เปิดใช้งาน";
+  $("#mfa-setup").textContent = status.pending ? "สร้างรหัสตั้งค่าใหม่" : "เริ่มตั้งค่า MFA";
+  $("#mfa-setup").disabled = Boolean(status.enabled);
+  if (status.enabled) $("#mfa-enroll").classList.add("hidden");
+}
+
+async function beginMfaSetup() {
+  const data = await api("/api/auth/mfa/setup", { method: "POST", body: "{}" });
+  $("#mfa-secret").value = data.secret;
+  $("#mfa-confirm-code").value = "";
+  $("#mfa-enroll").classList.remove("hidden");
+  $("#mfa-recovery-wrap").classList.add("hidden");
+  $("#mfa-confirm-code").focus();
+  $("#mfa-status").textContent = "รอยืนยันรหัสจากแอป Authenticator";
+}
+
+async function enableMfa() {
+  const code = $("#mfa-confirm-code").value.trim();
+  if (!/^\d{6}$/.test(code)) throw new Error("กรอกรหัสยืนยัน 6 หลักจากแอป Authenticator");
+  const data = await api("/api/auth/mfa/enable", { method: "POST", body: JSON.stringify({ code }) });
+  $("#mfa-secret").value = "";
+  $("#mfa-enroll").classList.add("hidden");
+  $("#mfa-recovery").value = data.recovery_codes.join("\n");
+  $("#mfa-recovery-wrap").classList.remove("hidden");
+  toast("เปิดใช้งาน MFA แล้ว กรุณาเก็บรหัสกู้คืนทันที");
+  await loadMfa();
 }
 
 async function loadImageStatus() {
@@ -497,6 +529,8 @@ $("#refresh-training").addEventListener("click", () => loadTraining().catch((err
 $("#export-training").addEventListener("click", () => { location.href = "/api/learning/export"; });
 $("#refresh-system").addEventListener("click", () => loadSystem().catch((error) => toast(error.message)));
 $("#create-invite").addEventListener("click", async () => { try { const data = await api("/api/auth/invites", { method: "POST", body: JSON.stringify({ role: $("#invite-role").value }) }); $("#invite-result").value = `${location.origin}/login?invite=${encodeURIComponent(data.token)}`; } catch (error) { toast(error.message); } });
+$("#mfa-setup").addEventListener("click", () => beginMfaSetup().catch((error) => toast(error.message)));
+$("#mfa-enable").addEventListener("click", () => enableMfa().catch((error) => toast(error.message)));
 $("#revoke-sessions").addEventListener("click", async () => { await api("/api/auth/sessions/revoke-others", { method: "POST", body: "{}" }); toast("ออกจากระบบอุปกรณ์อื่นแล้ว"); await loadSessions(); });
 $("#logout").addEventListener("click", async () => { await api("/api/auth/logout", { method: "POST", body: "{}" }); location.replace("/login"); });
 

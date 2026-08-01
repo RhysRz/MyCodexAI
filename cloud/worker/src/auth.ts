@@ -17,6 +17,15 @@ import {
   sha256,
   verifyPassword,
 } from "./security";
+import {
+  consumeRecoveryCode,
+  createRecoveryCodes,
+  createTotpSecret,
+  decryptSecret,
+  encryptSecret,
+  recoveryHashes,
+  verifyTotp,
+} from "./mfa";
 
 interface CredentialsPayload {
   username?: string;
@@ -121,12 +130,32 @@ async function login(context: RequestContext): Promise<Response> {
     return errorJson("ลองเข้าสู่ระบบใหม่ภายหลัง 15 นาที", 429);
   }
   const row = await context.env.DB.prepare(
-    "SELECT id, username, password_hash, role FROM users WHERE username = ? COLLATE NOCASE AND disabled_at IS NULL",
-  ).bind(username).first<{ id: string; username: string; password_hash: string; role: "admin" | "user" }>();
+    "SELECT id, username, password_hash, role, mfa_secret_encrypted, mfa_recovery_hashes_json FROM users WHERE username = ? COLLATE NOCASE AND disabled_at IS NULL",
+  ).bind(username).first<{ id: string; username: string; password_hash: string; role: "admin" | "user"; mfa_secret_encrypted: string | null; mfa_recovery_hashes_json: string }>();
   if (!row || !(await verifyPassword(row.password_hash, password))) {
     await recordLoginFailure(context, key, now);
     await audit(context.env, row?.id || null, "cloud_login", "failed", "Invalid credentials");
     return errorJson("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", 401);
+  }
+  if (row.mfa_secret_encrypted) {
+    const code = String(payload.mfa_code || "").trim();
+    if (!code) return json({ detail: "กรอกรหัสยืนยันจากแอปหรือรหัสกู้คืน", mfa_required: true }, 428);
+    let valid = false;
+    try {
+      valid = await verifyTotp(await decryptSecret(context.env, row.mfa_secret_encrypted), code);
+    } catch { valid = false; }
+    if (!valid) {
+      const recovery = await consumeRecoveryCode(row.mfa_recovery_hashes_json || "[]", code);
+      valid = recovery.ok;
+      if (valid) {
+        await context.env.DB.prepare("UPDATE users SET mfa_recovery_hashes_json = ? WHERE id = ?").bind(JSON.stringify(recovery.remaining), row.id).run();
+      }
+    }
+    if (!valid) {
+      await recordLoginFailure(context, key, now);
+      await audit(context.env, row.id, "cloud_login_mfa", "failed", "Invalid MFA code");
+      return json({ detail: "รหัส MFA หรือรหัสกู้คืนไม่ถูกต้อง", mfa_required: true }, 401);
+    }
   }
   await context.env.DB.prepare("DELETE FROM login_limits WHERE client_key = ?").bind(key).run();
   const user: CloudUser = { id: row.id, username: row.username, role: row.role };
@@ -185,6 +214,55 @@ async function revokeOtherSessions(context: RequestContext): Promise<Response> {
   return json({ revoked: Number(result.meta.changes || 0) });
 }
 
+async function mfaStatus(context: RequestContext): Promise<Response> {
+  if (!context.user) return errorJson("ต้องเข้าสู่ระบบ", 401);
+  const row = await context.env.DB.prepare(
+    "SELECT mfa_secret_encrypted, mfa_pending_encrypted, mfa_recovery_hashes_json FROM users WHERE id = ?",
+  ).bind(context.user.id).first<{ mfa_secret_encrypted: string | null; mfa_pending_encrypted: string | null; mfa_recovery_hashes_json: string }>();
+  let recoveryCount = 0;
+  try {
+    const parsed = JSON.parse(row?.mfa_recovery_hashes_json || "[]") as unknown;
+    recoveryCount = Array.isArray(parsed) ? parsed.length : 0;
+  } catch { recoveryCount = 0; }
+  return json({ enabled: Boolean(row?.mfa_secret_encrypted), pending: Boolean(row?.mfa_pending_encrypted), recovery_codes_remaining: recoveryCount });
+}
+
+async function setupMfa(context: RequestContext): Promise<Response> {
+  if (!context.user) return errorJson("ต้องเข้าสู่ระบบ", 401);
+  const current = await context.env.DB.prepare("SELECT mfa_secret_encrypted FROM users WHERE id = ?").bind(context.user.id).first<{ mfa_secret_encrypted: string | null }>();
+  if (current?.mfa_secret_encrypted) return errorJson("บัญชีนี้เปิดใช้งาน MFA แล้ว", 409);
+  const secret = createTotpSecret();
+  await context.env.DB.prepare("UPDATE users SET mfa_pending_encrypted = ? WHERE id = ?").bind(await encryptSecret(context.env, secret), context.user.id).run();
+  const label = encodeURIComponent(`MyCodexAI Cloud:${context.user.username}`);
+  const issuer = encodeURIComponent("MyCodexAI Cloud");
+  await audit(context.env, context.user.id, "mfa_setup", "pending", "MFA setup started; secret omitted");
+  return json({ secret, otpauth_url: `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30` });
+}
+
+async function enableMfa(context: RequestContext): Promise<Response> {
+  if (!context.user) return errorJson("ต้องเข้าสู่ระบบ", 401);
+  const payload = await readJson<{ code?: string }>(context.request, 8_000);
+  const row = await context.env.DB.prepare("SELECT mfa_pending_encrypted FROM users WHERE id = ?").bind(context.user.id).first<{ mfa_pending_encrypted: string | null }>();
+  if (!row?.mfa_pending_encrypted) return errorJson("กรุณาเริ่มตั้งค่า MFA ก่อน", 409);
+  let secret: string;
+  try { secret = await decryptSecret(context.env, row.mfa_pending_encrypted); } catch { return errorJson("อ่านข้อมูลตั้งค่า MFA ไม่สำเร็จ", 500); }
+  if (!(await verifyTotp(secret, String(payload.code || "")))) return errorJson("รหัส 6 หลักไม่ถูกต้องหรือหมดเวลาแล้ว", 400);
+  const recoveryCodes = createRecoveryCodes();
+  const rawSession = parseCookies(context.request)[SESSION_COOKIE];
+  if (!rawSession) return errorJson("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่", 401);
+  await context.env.DB.batch([
+    context.env.DB.prepare(
+      "UPDATE users SET mfa_secret_encrypted = ?, mfa_pending_encrypted = NULL, mfa_recovery_hashes_json = ? WHERE id = ?",
+    ).bind(await encryptSecret(context.env, secret), JSON.stringify(await recoveryHashes(recoveryCodes)), context.user.id),
+    context.env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").bind(
+      context.user.id,
+      await sha256(rawSession),
+    ),
+  ]);
+  await audit(context.env, context.user.id, "mfa_enabled", "ok", "Cloud MFA enabled; recovery codes omitted");
+  return json({ enabled: true, recovery_codes: recoveryCodes });
+}
+
 export async function handleAuth(context: RequestContext, path: string): Promise<Response | null> {
   if (path === "/api/auth/bootstrap" && context.request.method === "POST") return bootstrap(context);
   if (path === "/api/auth/register" && context.request.method === "POST") return register(context);
@@ -196,9 +274,9 @@ export async function handleAuth(context: RequestContext, path: string): Promise
   if (path === "/api/auth/invites" && context.request.method === "POST") return createInvite(context);
   if (path === "/api/auth/sessions" && context.request.method === "GET") return listSessions(context);
   if (path === "/api/auth/sessions/revoke-others" && context.request.method === "POST") return revokeOtherSessions(context);
-  if (path === "/api/auth/mfa" && context.request.method === "GET") {
-    return context.user ? json({ enabled: false, required: false }) : errorJson("ต้องเข้าสู่ระบบ", 401);
-  }
+  if (path === "/api/auth/mfa" && context.request.method === "GET") return mfaStatus(context);
+  if (path === "/api/auth/mfa/setup" && context.request.method === "POST") return setupMfa(context);
+  if (path === "/api/auth/mfa/enable" && context.request.method === "POST") return enableMfa(context);
   if (path === "/api/auth/oauth/providers" && context.request.method === "GET") {
     return json({ providers: { google: false, github: false } });
   }

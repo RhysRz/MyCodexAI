@@ -20,6 +20,7 @@ export interface Env {
   GITHUB_TOKEN: string;
   RUNNER_CALLBACK_SECRET: string;
   CLOUD_BOOTSTRAP_TOKEN: string;
+  AUTH_ENCRYPTION_KEY: string;
   PUBLIC_ORIGIN?: string;
   SESSION_HOURS?: string;
   AGENT_DAILY_LIMIT?: string;

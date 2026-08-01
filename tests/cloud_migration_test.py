@@ -20,9 +20,11 @@ def test_cloud_worker_has_required_components() -> None:
         WORKER / "src" / "learning.ts",
         WORKER / "src" / "admin.ts",
         WORKER / "src" / "music.ts",
+        WORKER / "src" / "mfa.ts",
         WORKER / "migrations" / "0001_initial.sql",
         WORKER / "migrations" / "0002_cloud_parity.sql",
         WORKER / "migrations" / "0003_cloud_music.sql",
+        WORKER / "migrations" / "0004_cloud_mfa.sql",
         ROOT / ".github" / "workflows" / "mycodexai-cloud-agent.yml",
         ROOT / "cloud" / "runner" / "run_job.py",
         ROOT / "cloud" / "runner" / "run_music_job.py",
@@ -64,7 +66,7 @@ def test_cloud_does_not_embed_secret_values() -> None:
         if path.suffix.lower() not in {".ts", ".js", ".json", ".jsonc", ".yml", ".yaml", ".py", ".ps1", ".md", ".sql"}:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
-        for name in ("GITHUB_TOKEN", "RUNNER_CALLBACK_SECRET", "CLOUD_BOOTSTRAP_TOKEN"):
+        for name in ("GITHUB_TOKEN", "RUNNER_CALLBACK_SECRET", "CLOUD_BOOTSTRAP_TOKEN", "AUTH_ENCRYPTION_KEY"):
             for line in text.splitlines():
                 compact = line.strip()
                 if compact.startswith(f"{name}=") and "replace-" not in compact:
@@ -95,7 +97,7 @@ def test_mobile_ui_uses_external_scripts_and_safe_rendering() -> None:
     app = (WORKER / "public" / "app.js").read_text(encoding="utf-8")
     style = (WORKER / "public" / "style.css").read_text(encoding="utf-8")
     assert "<script>" not in index
-    assert 'src="/app.js"' in index
+    assert 'src="/app.js' in index
     assert "textContent" in app
     assert "innerHTML" not in app
     assert "@media(max-width:760px)" in style
@@ -148,3 +150,19 @@ def test_cloud_image_caption_is_composed_outside_the_model() -> None:
     assert "exportCanvaSvg" in app
     assert "Do not draw letters" in images
     assert "payload.caption" not in images
+
+
+def test_cloud_mfa_and_fresh_shell_assets_are_wired() -> None:
+    auth = (WORKER / "src" / "auth.ts").read_text(encoding="utf-8")
+    mfa = (WORKER / "src" / "mfa.ts").read_text(encoding="utf-8")
+    login = (WORKER / "public" / "login.html").read_text(encoding="utf-8")
+    login_script = (WORKER / "public" / "login.js").read_text(encoding="utf-8")
+    app = (WORKER / "public" / "app.js").read_text(encoding="utf-8")
+    service_worker = (WORKER / "public" / "sw.js").read_text(encoding="utf-8")
+    assert 'id="mfa-code"' in login
+    assert "mfa_required" in login_script
+    assert '"/api/auth/mfa/setup"' in auth and '"/api/auth/mfa/enable"' in auth
+    assert "AES-GCM" in mfa and "HMAC" in mfa
+    assert 'id="mfa-secret"' in (WORKER / "public" / "index.html").read_text(encoding="utf-8")
+    assert "new Date(session.last_seen_at)" in app
+    assert "skipWaiting" in service_worker and "fetch(event.request)" in service_worker

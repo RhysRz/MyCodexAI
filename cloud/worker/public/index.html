@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101113">
   <title>MyCodexAI Cloud</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=20260802-2">
 </head>
 <body class="app-page">
   <button id="backdrop" class="backdrop hidden" aria-label="ปิดเมนู"></button>
@@ -133,10 +133,26 @@
 
     <section id="view-admin" class="view">
       <div class="panel narrow"><p class="eyebrow">ADMIN</p><h1>เชิญผู้ใช้</h1><p class="muted">ลิงก์เชิญใช้ได้ครั้งเดียวและหมดอายุใน 24 ชั่วโมง</p><div class="inline"><select id="invite-role"><option value="user">ผู้ใช้ทั่วไป</option><option value="admin">ผู้ดูแลระบบ</option></select><button id="create-invite" class="primary">สร้างคำเชิญ</button></div><textarea id="invite-result" rows="3" readonly placeholder="โทเคนคำเชิญจะแสดงที่นี่"></textarea></div>
+      <div class="panel narrow">
+        <p class="eyebrow">SECURITY</p><h2>ยืนยันตัวตนสองขั้นตอน (MFA)</h2>
+        <p id="mfa-status" class="muted">กำลังตรวจสอบสถานะ…</p>
+        <button id="mfa-setup" class="secondary">เริ่มตั้งค่า MFA</button>
+        <div id="mfa-enroll" class="subpanel hidden">
+          <p class="muted tiny">เพิ่มบัญชีใน Google Authenticator, Microsoft Authenticator หรือแอป TOTP ด้วยรหัสด้านล่าง ข้อมูลนี้จะไม่ถูกส่งไปบริการสร้าง QR ภายนอก</p>
+          <label>รหัสตั้งค่าด้วยตนเอง<input id="mfa-secret" readonly autocomplete="off"></label>
+          <label>รหัสยืนยัน 6 หลัก<input id="mfa-confirm-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></label>
+          <button id="mfa-enable" class="primary">เปิดใช้งาน MFA</button>
+        </div>
+        <div id="mfa-recovery-wrap" class="subpanel hidden">
+          <h3>รหัสกู้คืน (แสดงครั้งเดียว)</h3>
+          <p class="muted tiny">เก็บไว้ในที่ปลอดภัย แต่ละรหัสใช้ได้ครั้งเดียว</p>
+          <textarea id="mfa-recovery" rows="10" readonly></textarea>
+        </div>
+      </div>
       <div class="panel narrow"><h2>อุปกรณ์ที่เข้าสู่ระบบ</h2><div id="session-list" class="card-list"></div><button id="revoke-sessions" class="danger">ออกจากระบบอุปกรณ์อื่นทั้งหมด</button></div>
     </section>
   </main>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="/app.js" defer></script>
+  <script src="/app.js?v=20260802-2" defer></script>
 </body>
 </html>

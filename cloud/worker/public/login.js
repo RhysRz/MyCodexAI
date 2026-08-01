@@ -10,7 +10,12 @@ let bootstrapRequired = false;
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || "ไม่สามารถเชื่อมต่อระบบได้");
+  if (!response.ok) {
+    const error = new Error(data.detail || "ไม่สามารถเชื่อมต่อระบบได้");
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
   return data;
 }
 
@@ -43,6 +48,7 @@ form.addEventListener("submit", async (event) => {
   button.disabled = true;
   try {
     const body = { username: $("#username").value, password: $("#password").value };
+    if (!$("#mfa-wrap").classList.contains("hidden")) body.mfa_code = $("#mfa-code").value;
     let endpoint = "/api/auth/login";
     if (bootstrapRequired) {
       endpoint = "/api/auth/bootstrap";
@@ -54,6 +60,12 @@ form.addEventListener("submit", async (event) => {
     await api(endpoint, { method: "POST", body: JSON.stringify(body) });
     location.replace("/");
   } catch (error) {
+    if (error.data?.mfa_required && !bootstrapRequired && !invite) {
+      $("#mfa-wrap").classList.remove("hidden");
+      $("#mfa-code").required = true;
+      $("#mfa-code").focus();
+      $("#auth-submit").textContent = "ยืนยันและเข้าสู่ระบบ";
+    }
     errorBox.textContent = error.message;
   } finally {
     button.disabled = false;
