@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
+    <title>MyCodexAI · Image Studio</title>
+    <link rel="stylesheet" href="/static/images.css?v=1">
+</head>
+<body>
+    <header class="image-header"><a href="/" class="brand"><b>M</b> MyCodexAI</a><nav><a href="/">งาน</a><a href="/music">Music Lab</a><a href="/remote">Remote</a></nav></header>
+    <main class="image-main">
+        <section class="image-panel">
+            <p class="eyebrow">IMAGE STUDIO</p><h1>สร้างภาพด้วย MyCodex</h1>
+            <p id="image-status" class="muted">กำลังตรวจสอบการเชื่อมต่อ…</p>
+            <label>อธิบายภาพที่ต้องการ<textarea id="image-prompt" rows="4" maxlength="2000" placeholder="เช่น ห้องทำงานสไตล์มินิมอล แสงอบอุ่น ไม่มีข้อความในภาพ"></textarea></label>
+            <label>ข้อความภาษาไทยบนภาพ <small>(ไม่บังคับ)</small><input id="image-caption" maxlength="160" placeholder="เช่น เปิดรับสมัครงาน วันนี้"></label>
+            <p class="muted">ข้อความภาษาไทยจะถูกวางด้วยฟอนต์จริงหลังสร้างภาพเสร็จ</p>
+            <div class="actions"><button id="image-generate">สร้างภาพ</button><a id="image-download" hidden download>ดาวน์โหลดภาพ</a><button id="image-canva" hidden>ส่งออกสำหรับ Canva</button></div>
+            <img id="image-result" hidden alt="ภาพที่สร้างโดย MyCodex">
+        </section>
+        <section class="image-panel"><h2>ภาพของคุณ</h2><div id="image-gallery" class="gallery"></div></section>
+    </main>
+    <script src="/static/images.js?v=1"></script>
+</body>
+</html>

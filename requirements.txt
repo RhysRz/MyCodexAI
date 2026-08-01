@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+pydantic
+pydantic-settings
+openai
+pytest
+python-multipart
+argon2-cffi
+cryptography
+psutil
+huggingface_hub>=0.33.0
+Pillow>=10.0.0
+reportlab>=4.2.0
+numpy>=2.0.0
+pypdf>=6.0.0

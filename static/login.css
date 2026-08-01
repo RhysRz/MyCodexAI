@@ -1,0 +1,24 @@
+.auth-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(circle at 20% 0%, #22291b 0, var(--bg) 38%); }
+.auth-card { width: min(100%, 430px); border: 1px solid var(--line); border-radius: 16px; padding: 30px; background: rgba(28,29,33,.96); box-shadow: 0 22px 65px rgba(0,0,0,.35); }
+.auth-brand { padding: 0; margin-bottom: 32px; }
+.auth-card h1 { margin: 0; font-size: 28px; letter-spacing: -.04em; }
+.auth-card > p:not(.welcome-kicker) { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.auth-tabs { display: flex; gap: 4px; margin: 25px 0 19px; padding: 4px; border-radius: 9px; background: #151619; }
+.auth-tab { flex: 1; border: 0; border-radius: 6px; padding: 8px 6px; background: transparent; color: var(--muted); font-size: 11px; }
+.auth-tab.active { background: #30333a; color: var(--text); }
+.auth-form { display: grid; gap: 14px; }
+.auth-form label { display: grid; gap: 6px; color: #d4d6dc; font-size: 12px; font-weight: 650; }
+.auth-form input { width: 100%; border: 1px solid #454850; border-radius: 8px; padding: 10px; background: #121316; color: var(--text); outline: none; }
+.auth-form input:focus { border-color: rgba(217,249,157,.7); box-shadow: 0 0 0 3px rgba(217,249,157,.09); }
+.auth-help, .auth-error { margin: -2px 0 0; font-size: 11px; line-height: 1.5; }
+.auth-help { color: var(--muted); }
+.auth-error { color: var(--danger); }
+.auth-form .button { justify-self: stretch; margin-top: 5px; }
+.social-login { margin-top: 20px; }
+.social-divider { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; color: var(--muted); font-size: 11px; }
+.social-divider::before, .social-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.social-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.social-button { border: 1px solid #454850; border-radius: 8px; padding: 10px; background: #17181b; color: var(--text); font-weight: 700; }
+.social-button:hover:not(:disabled) { border-color: rgba(217,249,157,.65); background: #20221e; }
+.social-button:disabled { cursor: not-allowed; opacity: .55; }
+.social-login .auth-help { margin-top: 10px; text-align: center; }

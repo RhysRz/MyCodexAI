@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111214">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/static/app-icon.svg">
+    <title>Sign in · MyCodexAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/login.css">
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <div class="brand auth-brand"><span class="brand-mark">M</span><span>MyCodexAI</span></div>
+        <p class="welcome-kicker">PRIVATE AGENT WORKSPACE</p>
+        <h1 id="auth-title">เข้าสู่ระบบ</h1>
+        <p id="auth-description">ใช้บัญชีที่ได้รับเชิญเพื่อเข้าถึง workspace ของคุณ</p>
+
+        <div class="auth-tabs" role="tablist">
+            <button class="auth-tab active" type="button" data-mode="login">เข้าสู่ระบบ</button>
+            <button class="auth-tab" type="button" data-mode="register">ใช้คำเชิญ</button>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+            <label>ชื่อผู้ใช้<input id="auth-username" name="username" autocomplete="username" required minlength="3" maxlength="64"></label>
+            <label>รหัสผ่าน<input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="12"></label>
+            <label id="auth-mfa-label">รหัสยืนยัน MFA (หากเปิดใช้)<input id="auth-mfa" name="mfa_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"></label>
+            <label id="auth-secret-label" hidden>รหัสคำเชิญ<input id="auth-secret" name="secret" type="password" autocomplete="off"></label>
+            <p id="auth-help" class="auth-help">บัญชีถูกสร้างผ่านคำเชิญจากผู้ดูแลระบบ</p>
+            <p id="auth-error" class="auth-error" role="alert" hidden></p>
+            <button id="auth-submit" class="button primary" type="submit">เข้าสู่ระบบ <span>→</span></button>
+        </form>
+        <form id="oauth-mfa-form" class="auth-form" hidden>
+            <label>รหัสยืนยันจาก Authenticator<input id="oauth-mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label>
+            <p class="auth-help">ยืนยัน MFA ให้เสร็จเพื่อเข้าสู่ระบบด้วยบัญชีโซเชียล</p>
+            <p id="oauth-mfa-error" class="auth-error" role="alert" hidden></p>
+            <button id="oauth-mfa-submit" class="button primary" type="submit">ยืนยันและเข้าสู่ระบบ <span>→</span></button>
+        </form>
+        <section id="social-login" class="social-login" aria-label="เข้าสู่ระบบด้วยบัญชีภายนอก" hidden>
+            <div class="social-divider"><span>หรือเข้าสู่ระบบด้วย</span></div>
+            <div class="social-buttons">
+                <button id="login-google" class="social-button" type="button" disabled>Google</button>
+                <button id="login-github" class="social-button" type="button" disabled>GitHub</button>
+            </div>
+            <p class="auth-help">ใช้ได้เฉพาะบัญชีที่คุณเชื่อมไว้กับ MyCodexAI แล้ว</p>
+        </section>
+    </main>
+    <script src="/static/pwa.js"></script>
+    <script src="/static/auth.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# Local development only. Copy to .dev.vars and never commit the real file.
+GITHUB_TOKEN=replace-with-fine-grained-github-token
+RUNNER_CALLBACK_SECRET=replace-with-a-random-32-byte-secret
+CLOUD_BOOTSTRAP_TOKEN=replace-with-a-different-random-32-byte-secret

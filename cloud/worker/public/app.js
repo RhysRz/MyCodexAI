@@ -1,0 +1,234 @@
+"use strict";
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+let account = null;
+let conversationId = null;
+let files = [];
+let runTimer = null;
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body && !(options.body instanceof ArrayBuffer) && !(options.body instanceof Blob)) headers["Content-Type"] = "application/json";
+  const response = await fetch(path, { credentials: "same-origin", ...options, headers });
+  if (response.status === 401) {
+    location.replace("/login");
+    throw new Error("เซสชันหมดอายุ");
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || `คำขอล้มเหลว (${response.status})`);
+  return data;
+}
+
+function toast(message) {
+  const node = $("#toast");
+  node.textContent = message;
+  node.classList.remove("hidden");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => node.classList.add("hidden"), 3500);
+}
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function closeSidebar() {
+  $("#sidebar").classList.remove("open");
+  $("#backdrop").classList.add("hidden");
+}
+
+function openSidebar() {
+  $("#sidebar").classList.add("open");
+  $("#backdrop").classList.remove("hidden");
+}
+
+function showView(name) {
+  $$(".view").forEach((node) => node.classList.toggle("active-view", node.id === `view-${name}`));
+  $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === name));
+  const titles = { chat: "MyCodex", agent: "Cloud Agent", files: "ไฟล์แนบ", admin: "ผู้ดูแลระบบ" };
+  $("#view-title").textContent = titles[name] || "MyCodexAI";
+  closeSidebar();
+  if (name === "agent") loadRuns();
+  if (name === "files") loadFiles();
+  if (name === "admin") loadSessions();
+}
+
+function addBubble(role, content, pending = false) {
+  const welcome = $(".welcome");
+  if (welcome) welcome.remove();
+  const row = element("div", `bubble-row ${role}`);
+  const bubble = element("div", `bubble${pending ? " typing" : ""}`);
+  bubble.append(element("span", "bubble-label", role === "user" ? "คุณ" : "MYCODEX"));
+  const text = element("span", "bubble-text", content);
+  bubble.append(text);
+  row.append(bubble);
+  $("#messages").append(row);
+  $("#messages").scrollTop = $("#messages").scrollHeight;
+  return { row, bubble, text };
+}
+
+async function loadHistory(id) {
+  const data = await api(`/api/chat/history${id ? `?conversation=${encodeURIComponent(id)}` : ""}`);
+  conversationId = data.conversation_id;
+  const messages = $("#messages");
+  messages.replaceChildren();
+  if (!data.messages.length) {
+    const welcome = element("div", "welcome");
+    const mark = element("div", "brand-mark", "M");
+    welcome.append(mark, element("h1", "", "สวัสดีครับ ผม MyCodex"), element("p", "", "คุย ถาม หรือให้ช่วยวางแผนได้ตามปกติ งานที่ต้องแก้โค้ดให้เลือก Cloud Agent"));
+    messages.append(welcome);
+  } else data.messages.forEach((item) => addBubble(item.role, item.content));
+  await loadConversations();
+}
+
+async function loadConversations() {
+  const data = await api("/api/chat/conversations");
+  const list = $("#conversation-list");
+  list.replaceChildren();
+  data.conversations.forEach((item) => {
+    const button = element("button", `conversation${item.id === conversationId ? " active" : ""}`, item.title || "แชทใหม่");
+    button.type = "button";
+    button.addEventListener("click", () => loadHistory(item.id).catch((error) => toast(error.message)));
+    list.append(button);
+  });
+}
+
+async function sendMessage(message) {
+  addBubble("user", message);
+  const pending = addBubble("assistant", "", true);
+  const response = await fetch("/api/chat/stream", {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, conversation_id: conversationId }),
+  });
+  if (response.status === 401) return location.replace("/login");
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => ({}));
+    pending.row.remove();
+    throw new Error(data.detail || "MyCodex ยังตอบไม่ได้ กรุณาลองใหม่");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() || "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((part) => part.startsWith("data:"));
+      if (!line) continue;
+      const event = JSON.parse(line.slice(5).trim());
+      if (event.type === "delta") pending.text.textContent += event.delta;
+      if (event.type === "done") conversationId = event.conversation_id || conversationId;
+      if (event.type === "error") throw new Error(event.detail);
+      $("#messages").scrollTop = $("#messages").scrollHeight;
+    }
+    if (done) break;
+  }
+  pending.bubble.classList.remove("typing");
+  await loadConversations();
+}
+
+async function loadFiles() {
+  const data = await api("/api/files");
+  files = data.files || [];
+  const list = $("#file-list");
+  list.replaceChildren();
+  if (!files.length) list.append(element("p", "muted", "ยังไม่มีไฟล์แนบ"));
+  files.forEach((file) => {
+    const card = element("article", "item-card");
+    card.append(element("h3", "", file.name), element("p", "", `${(file.size_bytes / 1024).toFixed(1)} KB · ${file.status === "ready" ? "พร้อมใช้" : "กำลังอัปโหลด"}`));
+    const actions = element("div", "item-actions");
+    const remove = element("button", "danger", "ลบ");
+    remove.addEventListener("click", async () => { await api(`/api/files/${file.id}`, { method: "DELETE" }); await loadFiles(); });
+    actions.append(remove); card.append(actions); list.append(card);
+  });
+  const choices = $("#agent-files");
+  choices.replaceChildren();
+  const ready = files.filter((file) => file.status === "ready");
+  if (!ready.length) choices.textContent = "ยังไม่มีไฟล์พร้อมใช้";
+  ready.forEach((file) => {
+    const label = element("label");
+    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.value = file.id;
+    label.append(checkbox, document.createTextNode(file.name)); choices.append(label);
+  });
+}
+
+async function uploadFile(file) {
+  const meta = await api("/api/files", { method: "POST", body: JSON.stringify({ name: file.name, media_type: file.type, size_bytes: file.size }) });
+  for (let index = 0; index < meta.chunk_count; index += 1) {
+    $("#upload-status").textContent = `กำลังอัปโหลด ${file.name} · ${index + 1}/${meta.chunk_count}`;
+    const chunk = await file.slice(index * meta.chunk_bytes, Math.min(file.size, (index + 1) * meta.chunk_bytes)).arrayBuffer();
+    await api(`/api/files/${meta.id}/chunks/${index}`, { method: "PUT", body: chunk, headers: { "Content-Type": "application/octet-stream" } });
+  }
+  await api(`/api/files/${meta.id}/finish`, { method: "POST", body: "{}" });
+}
+
+function statusBadge(status) {
+  const failed = ["failed", "cancelled"].includes(status);
+  return element("span", `badge${failed ? " failed" : ""}`, status);
+}
+
+async function loadRuns() {
+  const data = await api("/api/agent/runs");
+  const list = $("#run-list"); list.replaceChildren();
+  if (!data.runs.length) list.append(element("p", "muted", "ยังไม่มีงาน Agent"));
+  let active = false;
+  data.runs.forEach((run) => {
+    if (!["completed", "failed", "needs_review", "cancelled"].includes(run.status)) active = true;
+    const card = element("article", "item-card");
+    card.append(element("h3", "", run.task), statusBadge(run.status));
+    if (run.answer) card.append(element("p", "", run.answer));
+    const actions = element("div", "item-actions");
+    if (run.progress?.pull_request_url) {
+      const link = element("a", "secondary", "เปิด Pull Request"); link.href = run.progress.pull_request_url; link.target = "_blank"; link.rel = "noopener"; actions.append(link);
+    }
+    if (["queued", "dispatching"].includes(run.status)) {
+      const cancel = element("button", "danger", "ยกเลิก");
+      cancel.addEventListener("click", async () => { await api(`/api/agent/runs/${run.run_id}/cancel`, { method: "POST", body: "{}" }); await loadRuns(); }); actions.append(cancel);
+    }
+    card.append(actions); list.append(card);
+  });
+  clearTimeout(runTimer);
+  if (active) runTimer = setTimeout(() => loadRuns().catch(() => {}), 8000);
+}
+
+async function loadSessions() {
+  const data = await api("/api/auth/sessions");
+  const list = $("#session-list"); list.replaceChildren();
+  data.sessions.forEach((session) => {
+    const card = element("article", "item-card");
+    card.append(element("h3", "", `${session.current ? "อุปกรณ์นี้ · " : ""}${session.device_label}`), element("p", "", `ใช้งานล่าสุด ${new Date(session.last_seen_at).toLocaleString("th-TH")}`));
+    list.append(card);
+  });
+}
+
+async function boot() {
+  account = await api("/api/auth/me");
+  $("#account-name").textContent = `@${account.username}`;
+  $("#account-role").textContent = account.role === "admin" ? "ผู้ดูแลระบบ" : "ผู้ใช้ทั่วไป";
+  if (account.role === "admin") $$(".admin-only").forEach((node) => node.classList.remove("hidden"));
+  const status = await api("/api/cloud/status");
+  $("#cloud-state").textContent = status.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
+  await Promise.all([loadHistory(), loadFiles()]);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+$("#open-sidebar").addEventListener("click", openSidebar); $("#close-sidebar").addEventListener("click", closeSidebar); $("#backdrop").addEventListener("click", closeSidebar);
+$$(".nav-item").forEach((node) => node.addEventListener("click", () => showView(node.dataset.view)));
+$("#refresh-history").addEventListener("click", () => loadConversations().catch((error) => toast(error.message)));
+$("#refresh-files").addEventListener("click", () => loadFiles().catch((error) => toast(error.message)));
+$("#refresh-runs").addEventListener("click", () => loadRuns().catch((error) => toast(error.message)));
+$("#new-chat").addEventListener("click", async () => { const data = await api("/api/chat/conversations", { method: "POST", body: "{}" }); await loadHistory(data.id); showView("chat"); });
+$("#composer").addEventListener("submit", async (event) => { event.preventDefault(); const input = $("#message-input"); const message = input.value.trim(); if (!message) return; input.value = ""; input.disabled = true; try { await sendMessage(message); } catch (error) { toast(error.message); } finally { input.disabled = false; input.focus(); } });
+$("#message-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("#composer").requestSubmit(); } });
+$("#file-picker").addEventListener("change", async (event) => { try { for (const file of event.target.files) await uploadFile(file); $("#upload-status").textContent = "อัปโหลดเรียบร้อย"; await loadFiles(); } catch (error) { toast(error.message); } finally { event.target.value = ""; } });
+$("#agent-form").addEventListener("submit", async (event) => { event.preventDefault(); const attachments = $$("#agent-files input:checked").map((node) => node.value); try { await api("/api/agent/runs", { method: "POST", body: JSON.stringify({ task: $("#agent-task").value, mode: $("#agent-mode").value, attachments }) }); $("#agent-task").value = ""; toast("ส่งงานเข้าคิวแล้ว"); await loadRuns(); } catch (error) { toast(error.message); } });
+$("#create-invite").addEventListener("click", async () => { try { const data = await api("/api/auth/invites", { method: "POST", body: JSON.stringify({ role: $("#invite-role").value }) }); $("#invite-result").value = `${location.origin}/login?invite=${encodeURIComponent(data.token)}`; } catch (error) { toast(error.message); } });
+$("#revoke-sessions").addEventListener("click", async () => { await api("/api/auth/sessions/revoke-others", { method: "POST", body: "{}" }); toast("ออกจากระบบอุปกรณ์อื่นแล้ว"); await loadSessions(); });
+$("#logout").addEventListener("click", async () => { await api("/api/auth/logout", { method: "POST", body: "{}" }); location.replace("/login"); });
+
+boot().catch((error) => toast(error.message));

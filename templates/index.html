@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111214">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/static/app-icon.svg">
+    <title>MyCodexAI · Agent workspace</title>
+    <link rel="stylesheet" href="/static/style.css?v=voice-jarvis-v1">
+</head>
+<body>
+    <div class="app-shell">
+        <aside id="workspace-sidebar" class="sidebar" aria-label="Workspace sidebar">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true">M</span>
+                <span>MyCodexAI</span>
+            </div>
+
+            <button id="sidebar-close" class="sidebar-close" type="button" aria-label="ปิดเมนู">×</button>
+            <button id="new-task" class="new-task" type="button">
+                <span aria-hidden="true">＋</span> งานใหม่
+            </button>
+
+            <nav aria-label="Agent navigation">
+                <p class="eyebrow">WORKSPACE</p>
+                <button class="nav-item active" type="button">
+                    <span class="nav-icon">⌘</span> Agent workspace
+                </button>
+                <button class="nav-item" type="button" id="focus-task">
+                    <span class="nav-icon">↗</span> เริ่มงาน
+                </button>
+            </nav>
+
+            <div id="sidebar-account-anchor" class="sidebar-account" aria-label="Account and settings"></div>
+
+            <section class="recent-section">
+                <p class="eyebrow">งานล่าสุด</p>
+                <div id="recent-runs" class="recent-runs" aria-live="polite">
+                    <p class="empty-recent">ยังไม่มีงานในเบราว์เซอร์นี้</p>
+                </div>
+            </section>
+
+            <div class="sidebar-footer">
+                <span class="online-dot" aria-hidden="true"></span>
+                <div>
+                    <strong>Ollama local</strong>
+                    <small>approval-aware agent</small>
+                </div>
+            </div>
+        </aside>
+        <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="ปิดเมนู" tabindex="-1"></button>
+
+        <main class="workspace">
+            <header class="topbar">
+                <button id="sidebar-menu-toggle" class="sidebar-menu-toggle" type="button" aria-label="เปิดเมนู" aria-controls="workspace-sidebar" aria-expanded="false">
+                    <span></span><span></span><span></span>
+                </button>
+                <div>
+                    <p class="eyebrow">MYCODEXAI / LOCAL AGENT</p>
+                    <h1>Agent workspace</h1>
+                </div>
+                <div class="topbar-status">
+                    <span id="current-user" class="current-user"></span>
+                    <a class="logout-button" href="/remote">Remote มือถือ</a>
+                    <a class="logout-button" href="/images">Image Studio</a>
+                    <a class="logout-button" href="/music">Music Lab</a>
+                    <button id="setup-mfa" class="logout-button" type="button">ตั้งค่า MFA</button>
+                    <button id="recovery-codes" class="logout-button" type="button">รหัสกู้คืน MFA</button>
+                    <span id="social-link-actions" hidden>
+                        <button id="link-google" class="logout-button" type="button" disabled>เชื่อม Google</button>
+                        <button id="link-github" class="logout-button" type="button" disabled>เชื่อม GitHub</button>
+                    </span>
+                    <button id="logout" class="logout-button" type="button">ออกจากระบบ</button>
+                    <span class="status-dot" aria-hidden="true"></span>
+                    <span>พร้อมทำงานใน workspace</span>
+                </div>
+            </header>
+
+            <section id="welcome" class="welcome-card">
+                <p class="welcome-kicker">LOCAL CODING AGENT</p>
+                <h2>ให้ agent ช่วยทำงานโค้ด<br>ทีละขั้นอย่างตรวจสอบได้</h2>
+                <p>
+                    อ่านและค้นหาโค้ดได้ทันที ส่วนการแก้ไฟล์หรือรันเทสต์จะหยุดให้คุณตรวจผลก่อนเสมอ
+                </p>
+                <div class="suggestions" aria-label="ตัวอย่างงาน">
+                    <button class="suggestion" type="button" data-task="ตรวจโครงสร้างโปรเจกต์และสรุปไฟล์สำคัญ">สรุปโครงสร้างโปรเจกต์</button>
+                    <button class="suggestion" type="button" data-task="ค้นหา TODO และเสนอแผนแก้ไขแบบเป็นขั้นตอน">ค้นหา TODO</button>
+                    <button class="suggestion" type="button" data-task="ตรวจ Git status และสรุปการเปลี่ยนแปลงที่ยังไม่ได้ commit">ตรวจ Git status</button>
+                    <button class="suggestion" type="button" data-task="สร้างหน้า landing page แบบง่าย โดยสร้าง index.html, style.css และ app.js ใน workspace แล้วรอให้ฉันตรวจ diff ก่อนเขียนไฟล์">สร้าง Landing page</button>
+                </div>
+            </section>
+
+            <section id="run-view" class="run-view" hidden>
+                <div class="run-heading">
+                    <div>
+                        <p class="eyebrow">AGENT RUN</p>
+                        <h2 id="run-title">งานใหม่</h2>
+                    </div>
+                    <div class="run-heading-actions">
+                        <button id="continue-run" class="run-cancel" type="button" hidden>ทำต่อจากสถานะเดิม</button>
+                        <button id="cancel-run" class="run-cancel" type="button" hidden>หยุด agent</button>
+                        <span id="run-status" class="run-status" data-status="idle">พร้อมเริ่ม</span>
+                    </div>
+                </div>
+                <div id="timeline" class="timeline" aria-live="polite"></div>
+            </section>
+
+            <section id="project-plan" class="project-plan" hidden aria-live="polite">
+                <p class="eyebrow">PROJECT PLAN</p>
+                <h2 id="plan-name">Project plan</h2>
+                <p id="plan-overview" class="plan-overview"></p>
+                <ol id="plan-milestones" class="plan-milestones"></ol>
+            </section>
+
+            <section id="team-panel" class="team-panel" hidden aria-live="polite">
+                <p class="eyebrow">LOCAL TEAM</p>
+                <h2>Research → Implement → Review</h2>
+                <p>ทำงานเรียงลำดับเพื่อไม่ให้ Ollama แย่ง CPU/RAM กัน</p>
+                <div id="team-members" class="team-members"></div>
+            </section>
+
+            <section id="approval-panel" class="approval-panel" hidden aria-live="polite">
+                <div class="approval-heading">
+                    <div>
+                        <p class="eyebrow">ACTION REQUIRES APPROVAL</p>
+                        <h2 id="approval-title">ตรวจสอบก่อนทำต่อ</h2>
+                    </div>
+                    <span class="lock-badge">🔒 ต้องอนุมัติ</span>
+                </div>
+                <p id="approval-summary" class="approval-summary"></p>
+                <pre id="diff-preview" class="diff-preview"></pre>
+                <div class="approval-actions">
+                    <button id="reject-action" class="button secondary" type="button">ปฏิเสธ</button>
+                    <button id="approve-action" class="button primary" type="button">อนุมัติและทำต่อ <span>→</span></button>
+                </div>
+            </section>
+
+            <section class="composer-panel chat-composer" aria-label="สร้างงานใหม่">
+                <div class="composer-topline">
+                    <label for="task-input">ส่งข้อความให้ MyCodex</label>
+                    <button id="open-advanced-controls" class="composer-controls" type="button" aria-expanded="false">การตั้งค่าและเครื่องมือ</button>
+                </div>
+                <textarea id="task-input" rows="1" placeholder="ถาม วางแผน แก้โค้ด หรือสร้างโปรเจกต์…"></textarea>
+                <div class="composer-shortcuts" aria-label="คำสั่งลัด">
+                    <button class="composer-shortcut" type="button" data-composer-shortcut="fix" data-mode="agent">แก้บั๊ก</button>
+                    <button class="composer-shortcut" type="button" data-composer-shortcut="build" data-mode="project">สร้างโปรเจกต์</button>
+                    <button class="composer-shortcut" type="button" data-composer-shortcut="review" data-mode="review">ตรวจโค้ด</button>
+                    <span>เลือกคำสั่งลัด หรือพิมพ์สิ่งที่ต้องการเอง</span>
+                </div>
+                <details id="advanced-composer" class="advanced-composer">
+                    <summary>Project · ไฟล์แนบ · Git · Terminal · Browser QA</summary>
+                    <div class="advanced-composer-content">
+                <section class="project-panel" aria-label="เลือกหรือนำเข้า project">
+                    <div class="project-controls">
+                        <label for="project-select">Active project</label>
+                        <select id="project-select" aria-label="Project ที่ agent ทำงานด้วย">
+                            <option value="workspace">workspace root</option>
+                        </select>
+                        <input id="project-name" placeholder="ชื่อ project เช่น MyCodexAI" autocomplete="off">
+                        <button id="import-project-folder" class="attachment-button" type="button">นำเข้าโฟลเดอร์</button>
+                        <button id="import-project-zip" class="attachment-button" type="button">นำเข้า ZIP</button>
+                        <button id="rebuild-project-index" class="attachment-button" type="button">สร้าง Code Index</button>
+                    </div>
+                    <input id="project-folder-picker" type="file" webkitdirectory multiple hidden>
+                    <input id="project-zip-picker" type="file" accept=".zip,application/zip" hidden>
+                    <p class="project-note">Project ที่เลือกจะเป็นขอบเขตการอ่าน เขียน แนบไฟล์ และ Terminal ของ agent ระบบตัด `.git`, dependency, cache และ secret เช่น `.env` อัตโนมัติ</p>
+                    <p id="project-index-status" class="project-index-status" hidden></p>
+                    <div class="project-memory-controls">
+                        <input id="project-memory-note" placeholder="บันทึกการตัดสินใจ เช่น ใช้ FastAPI เป็น backend" autocomplete="off">
+                        <button id="save-project-memory" class="attachment-button" type="button">บันทึก Memory</button>
+                        <button id="show-project-memory" class="attachment-button" type="button">ดู History</button>
+                    </div>
+                    <div id="project-memory-list" class="project-memory-list" hidden></div>
+                    <div class="project-guidance-controls">
+                        <textarea id="project-guidance" rows="2" placeholder="Project guidance: โครงสร้าง, คำสั่ง test, ข้อห้าม หรือมาตรฐานที่ agent ต้องทำตาม"></textarea>
+                        <button id="save-project-guidance" class="attachment-button" type="button">บันทึก Guidance</button>
+                        <button id="load-project-guidance" class="attachment-button" type="button">โหลด Guidance</button>
+                    </div>
+                    <div class="project-skills-controls">
+                        <p class="project-skills-title">PROJECT SKILLS · workflow ที่ agent เรียกใช้ซ้ำได้</p>
+                        <input id="project-skill-id" placeholder="skill id เช่น frontend-qa" autocomplete="off">
+                        <input id="project-skill-name" placeholder="ชื่อ เช่น Frontend QA" autocomplete="off">
+                        <input id="project-skill-description" placeholder="ใช้เมื่อ: ตรวจ UI ก่อนส่งงาน" autocomplete="off">
+                        <textarea id="project-skill-instructions" rows="3" placeholder="ขั้นตอนของ workflow นี้ เช่น อ่าน diff → รัน test ที่เกี่ยวข้อง → สรุปหลักฐานและความเสี่ยง"></textarea>
+                        <button id="save-project-skill" class="attachment-button" type="button">บันทึก Skill</button>
+                        <button id="load-project-skills" class="attachment-button" type="button">ดู Skills</button>
+                    </div>
+                    <div id="project-skills-list" class="project-skills-list" hidden></div>
+                </section>
+                <section class="worktree-panel" aria-label="เลือก Git worktree">
+                    <div class="worktree-controls">
+                        <label for="worktree-select">Workspace / branch</label>
+                        <select id="worktree-select" aria-label="Workspace หรือ Git branch">
+                            <option value="main">main workspace</option>
+                        </select>
+                        <input id="worktree-branch" placeholder="feature/my-change" autocomplete="off">
+                        <button id="create-worktree" class="attachment-button" type="button">สร้าง branch workspace</button>
+                    </div>
+                    <p class="worktree-note">สร้างได้หลังจาก main workspace มี Git และ commit แรกแล้ว งานและไฟล์แนบจะทำใน workspace ที่เลือกเท่านั้น</p>
+                </section>
+                <section class="attachment-panel" aria-label="แนบไฟล์เข้า workspace">
+                    <div class="attachment-controls">
+                        <button id="attach-files" class="attachment-button" type="button">แนบไฟล์</button>
+                        <button id="attach-folder" class="attachment-button" type="button">แนบโฟลเดอร์</button>
+                        <label class="upload-destination-label" for="upload-destination">โฟลเดอร์ปลายทาง
+                            <input id="upload-destination" value="uploads" autocomplete="off">
+                        </label>
+                        <label class="replace-files-label"><input id="upload-overwrite" type="checkbox"> แทนที่ไฟล์เดิม</label>
+                    </div>
+                    <input id="file-picker" type="file" multiple hidden>
+                    <input id="folder-picker" type="file" webkitdirectory multiple hidden>
+                    <div id="attachment-list" class="attachment-list" hidden></div>
+                </section>
+                <section class="terminal-panel" aria-label="Terminal ที่ต้องอนุมัติ">
+                    <div class="terminal-heading">
+                        <div>
+                            <p class="eyebrow">SAFE TERMINAL</p>
+                            <h3>รันคำสั่งใน workspace ที่เลือก</h3>
+                        </div>
+                        <span id="terminal-status" class="terminal-status">พร้อมใช้งาน</span>
+                    </div>
+                    <div class="terminal-controls">
+                        <input id="terminal-command" aria-label="คำสั่ง terminal" placeholder="เช่น npm test หรือ git status --short" autocomplete="off">
+                        <input id="terminal-directory" aria-label="โฟลเดอร์ทำงาน" value="." placeholder="โฟลเดอร์ เช่น apps/web" autocomplete="off">
+                        <button id="start-terminal" class="attachment-button" type="button">ตรวจคำสั่ง</button>
+                    </div>
+                    <p class="terminal-note">ไม่ใช้ shell: รองรับ runtime โปรเจกต์ที่อนุญาต และ Git สำหรับอ่านสถานะเท่านั้น ต้องกดยืนยันก่อนเริ่มรัน</p>
+                    <p id="sandbox-status" class="sandbox-status" data-mode="checking">กำลังตรวจสถานะ execution sandbox…</p>
+                    <div id="terminal-approval" class="terminal-approval" hidden>
+                        <p id="terminal-approval-text"></p>
+                        <button id="reject-terminal" class="button secondary" type="button">ไม่รัน</button>
+                        <button id="approve-terminal" class="button primary" type="button">อนุมัติและรัน</button>
+                    </div>
+                    <pre id="terminal-output" class="terminal-output" hidden></pre>
+                    <button id="cancel-terminal" class="terminal-cancel" type="button" hidden>หยุดคำสั่ง</button>
+                </section>
+                <section class="browser-qa-panel" aria-label="ตรวจหน้าเว็บด้วย Browser QA">
+                    <div class="terminal-heading">
+                        <div>
+                            <p class="eyebrow">BROWSER QA</p>
+                            <h3>สร้าง screenshot ของหน้า HTML ใน project ที่เลือก</h3>
+                        </div>
+                    </div>
+                    <div class="browser-qa-controls">
+                        <input id="browser-qa-file" value="index.html" aria-label="ไฟล์ HTML ที่ต้องการตรวจ" placeholder="index.html">
+                        <button id="capture-browser-qa" class="attachment-button" type="button">สร้าง Screenshot</button>
+                    </div>
+                    <p class="terminal-note">ปุ่มนี้จะรัน JavaScript ของหน้าเว็บในเบราว์เซอร์บนเครื่องนี้ ใช้เฉพาะโค้ดที่เชื่อถือได้ แล้วตรวจผลจากภาพก่อนสรุปงาน</p>
+                    <div id="browser-qa-result" class="browser-qa-result" hidden>
+                        <p id="browser-qa-meta"></p>
+                        <img id="browser-qa-screenshot" alt="Browser QA screenshot" loading="lazy">
+                    </div>
+                </section>
+                    </div>
+                </details>
+                <div class="composer-footer">
+                    <select id="run-mode" class="run-mode" aria-label="โหมดการทำงาน">
+                        <option value="chat">Chat</option>
+                        <option value="agent">Agent</option>
+                        <option value="project">Build project</option>
+                        <option value="expert">Expert workflow</option>
+                        <option value="delivery">Delivery</option>
+                        <option value="team">Team</option>
+                        <option value="review">Review</option>
+                    </select>
+                    <div id="review-controls" class="review-controls" hidden>
+                        <select id="review-scope" class="run-mode" aria-label="Review scope">
+                            <option value="uncommitted">Uncommitted changes</option>
+                            <option value="staged">Staged changes</option>
+                            <option value="commit">One commit</option>
+                            <option value="branch">Branch against HEAD</option>
+                        </select>
+                        <input id="review-target" class="run-mode" type="text" maxlength="128" placeholder="commit or base branch" aria-label="Commit or branch to review" hidden>
+                    </div>
+                    <div class="voice-controls" aria-label="ควบคุมด้วยเสียง">
+                        <button id="voice-input" class="voice-button" type="button" aria-pressed="false" title="พูดเพื่อพิมพ์ข้อความ">🎙️ พูด</button>
+                        <button id="voice-conversation" class="voice-button voice-conversation" type="button" aria-pressed="false" title="เริ่มคุยด้วยเสียงในโหมด Chat">◉ คุยด้วยเสียง</button>
+                        <button id="voice-command" class="voice-button voice-command" type="button" aria-pressed="false" title="พูดเพื่อสั่ง Agent ทำงานบนคอม">⌘ พูดสั่งคอม</button>
+                        <button id="voice-auto-read" class="voice-button" type="button" aria-pressed="false" title="อ่านคำตอบของ MyCodex อัตโนมัติ">🔊 อ่านตอบ</button>
+                        <span id="voice-status" class="voice-status" role="status">เสียงพร้อมใช้</span>
+                    </div>
+                    <p><kbd>Ctrl</kbd> <span>+</span> <kbd>Enter</kbd> เพื่อส่ง</p>
+                    <button id="start-agent" class="button primary" type="button">
+                        <span id="start-label">ส่ง</span> <span aria-hidden="true">↑</span>
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <aside class="inspector" aria-label="Run inspector">
+            <section class="inspector-card">
+                <p class="eyebrow">RUN INSPECTOR</p>
+                <h2>สถานะงาน</h2>
+                <dl class="run-facts">
+                    <div><dt>Run</dt><dd id="fact-run">—</dd></div>
+                    <div><dt>Steps</dt><dd id="fact-steps">—</dd></div>
+                    <div><dt>Mode</dt><dd id="fact-mode">Ollama local</dd></div>
+                </dl>
+            </section>
+
+            <section class="inspector-card operations-card">
+                <p class="eyebrow">OPERATIONS</p>
+                <h2>โควตาและสถานะ</h2>
+                <p id="usage-summary" class="admin-note">กำลังโหลดโควตางานวันนี้…</p>
+                <p id="activity-summary" class="admin-note">ยังไม่มีเหตุการณ์ล่าสุด</p>
+                <button id="enable-notifications" class="attachment-button" type="button">เปิดแจ้งเตือนเมื่อ Agent เสร็จ</button>
+            </section>
+
+            <section class="inspector-card resilience-card">
+                <p class="eyebrow">RECOVERY &amp; HOST</p>
+                <h2>สำรองและความพร้อม</h2>
+                <p id="resilience-status" class="admin-note">กำลังตรวจสอบการฟื้นตัวและทรัพยากร…</p>
+                <div class="github-actions">
+                    <button id="create-backup" class="attachment-button" type="button">สร้าง Backup เข้ารหัส</button>
+                    <button id="restore-backup" class="attachment-button" type="button">Restore ล่าสุด</button>
+                </div>
+                <p class="admin-note">Backup ไม่รวม .env, token หรือ dependency cache และต้องใช้ passphrase แยกต่างหาก</p>
+            </section>
+
+            <section class="inspector-card device-card">
+                <p class="eyebrow">DEVICES</p>
+                <h2>อุปกรณ์ที่ลงชื่อเข้าใช้</h2>
+                <div id="device-sessions" class="device-sessions">กำลังโหลด…</div>
+                <button id="revoke-other-sessions" class="attachment-button" type="button">ออกจากอุปกรณ์อื่นทั้งหมด</button>
+            </section>
+
+            <section id="image-studio" class="inspector-card image-studio" hidden>
+                <p class="eyebrow">IMAGE STUDIO</p>
+                <h2>สร้างภาพด้วย MyCodex</h2>
+                <p id="image-status" class="admin-note">กำลังตรวจสอบการเชื่อมต่อกับ Hugging Face…</p>
+                <textarea id="image-prompt" class="image-prompt" rows="3" maxlength="2000" placeholder="อธิบายภาพที่ต้องการ เช่น แมวสีส้มกำลังเขียนโค้ดในห้องมืด สไตล์ภาพยนตร์"></textarea>
+                <label class="image-overlay-label">ข้อความภาษาไทยบนภาพ <span>(ไม่บังคับ)</span>
+                    <input id="image-overlay-text" class="image-overlay-text" maxlength="160" placeholder="เช่น เปิดรับสมัครงาน วันนี้">
+                </label>
+                <p class="image-overlay-note">ข้อความนี้จะถูกวางบนภาพหลังจากสร้างเสร็จ จึงอ่านภาษาไทยได้ถูกต้อง และจะไม่ถูกส่งให้โมเดลวาดเป็นตัวอักษร</p>
+                <div class="image-actions">
+                    <button id="generate-image" class="attachment-button" type="button">สร้างภาพ</button>
+                    <a id="image-download" class="attachment-button image-download" href="#" download hidden>ดาวน์โหลดภาพ</a>
+                    <button id="image-export-canva" class="attachment-button" type="button" hidden>ส่งออกสำหรับ Canva</button>
+                </div>
+                <img id="image-result" class="image-result" alt="ภาพที่สร้างโดย MyCodex" hidden>
+                <div id="image-gallery" class="image-gallery" aria-live="polite"></div>
+                <p class="admin-note">รูปภาพจัดเก็บแยกตามบัญชี · ระบบจะไม่บันทึกคำสั่งสร้างภาพหรือโทเค็น Hugging Face ลงในบันทึกการตรวจสอบ</p>
+            </section>
+
+            <section id="learning-panel" class="inspector-card learning-card" hidden>
+                <p class="eyebrow">TRAINING LAB</p>
+                <h2>ฝึกและวัดผลแบบส่วนตัว</h2>
+                <p id="learning-status" class="admin-note">กำลังโหลด Training Pipeline…</p>
+                <textarea id="learning-instruction" class="learning-text" rows="3" placeholder="คำสั่งตัวอย่างที่คุณอนุมัติให้ AI เรียนรู้"></textarea>
+                <textarea id="learning-ideal-response" class="learning-text" rows="4" placeholder="คำตอบ/แนวทางที่ถูกต้องและผ่านการตรวจแล้ว"></textarea>
+                <input id="learning-tags" class="learning-input" placeholder="tags เช่น fastapi,testing,security">
+                <button id="save-learning-example" class="attachment-button" type="button">บันทึกตัวอย่างที่อนุมัติ</button>
+                <textarea id="learning-eval-prompt" class="learning-text" rows="2" placeholder="โจทย์สำหรับวัดผล (ไม่ต้องมีข้อมูลลับ)"></textarea>
+                <input id="learning-eval-terms" class="learning-input" placeholder="คำสำคัญที่คำตอบถูกต้องต้องมี, คั่นด้วย comma">
+                <div class="github-actions">
+                    <button id="save-learning-eval" class="attachment-button" type="button">เพิ่ม Benchmark</button>
+                    <button id="run-learning-evals" class="attachment-button" type="button">รัน Benchmark</button>
+                    <button id="export-learning-jsonl" class="attachment-button" type="button">Export JSONL</button>
+                </div>
+                <p class="admin-note">บันทึกด้วยมือเท่านั้น · ระบบปฏิเสธข้อความที่ดูเป็น credential · Export เพื่อ QLoRA ในอนาคต</p>
+            </section>
+
+            <section class="inspector-card github-card">
+                <p class="eyebrow">GITHUB &amp; CI</p>
+                <h2>ส่งงานขึ้น GitHub</h2>
+                <p id="github-status" class="admin-note">กำลังตรวจ Git repository…</p>
+                <div class="github-actions">
+                    <button id="refresh-github" class="attachment-button" type="button">ตรวจใหม่</button>
+                    <button id="connect-github" class="attachment-button" type="button">เชื่อม Repository</button>
+                    <button id="create-github-ci" class="attachment-button" type="button">สร้าง CI</button>
+                    <button id="push-github" class="attachment-button" type="button">Push branch</button>
+                    <button id="open-github-pr" class="attachment-button" type="button">เปิด PR</button>
+                </div>
+                <pre id="github-output" class="github-output" hidden></pre>
+                <p class="admin-note">ไม่รับหรือเก็บ GitHub token: ใช้ credential manager หรือ <code>gh auth login</code> ในเครื่องเท่านั้น</p>
+            </section>
+
+            <section id="admin-panel" class="inspector-card admin-panel" hidden>
+                <p class="eyebrow">ADMIN</p>
+                <h2>เชิญผู้ใช้</h2>
+                <div class="admin-invite-controls">
+                    <select id="invite-role" aria-label="สิทธิ์ผู้ใช้ใหม่">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <button id="create-invite" class="attachment-button" type="button">สร้างคำเชิญ</button>
+                </div>
+                <textarea id="invite-token" class="invite-token" rows="3" readonly hidden></textarea>
+                <p class="admin-note">ส่งรหัสคำเชิญนี้อย่างปลอดภัย ใช้ได้ครั้งเดียวภายใน 7 วัน</p>
+            </section>
+
+            <section class="inspector-card safety-card">
+                <p class="eyebrow">SAFETY</p>
+                <ul>
+                    <li><span>✓</span> อ่านและค้นหาอัตโนมัติ</li>
+                    <li><span>⌁</span> ดู Git status และ diff ได้</li>
+                    <li><span>🔒</span> เขียนไฟล์/รันเทสต์ต้องอนุมัติ</li>
+                </ul>
+            </section>
+
+            <section class="inspector-card note-card">
+                <p class="eyebrow">TIP</p>
+                <p>เริ่มด้วยงานที่ชัดเจนและขอบเขตเล็กก่อน แล้วตรวจ diff ทุกครั้งก่อนอนุมัติ</p>
+            </section>
+        </aside>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/static/pwa.js"></script>
+    <script src="/static/voice.js?v=voice-jarvis-v2"></script>
+    <script src="/static/script.js?v=voice-jarvis-v2"></script>
+</body>
+</html>

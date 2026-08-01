@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mycodexai-cloud",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/", "/api/*"]
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mycodexai-cloud",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "AGENT_QUEUE",
+        "queue": "mycodexai-agent"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "mycodexai-agent",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "max_concurrency": 1,
+        "dead_letter_queue": "mycodexai-agent-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["17 3 * * *"]
+  },
+  "vars": {
+    "AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+    "GITHUB_OWNER": "REPLACE_WITH_GITHUB_USERNAME",
+    "GITHUB_REPO": "REPLACE_WITH_PRIVATE_REPOSITORY",
+    "PUBLIC_ORIGIN": "REPLACE_AFTER_FIRST_DEPLOY",
+    "SESSION_HOURS": "24",
+    "AGENT_DAILY_LIMIT": "12"
+  }
+}

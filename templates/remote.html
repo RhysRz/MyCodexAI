@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/static/app-icon.svg">
+    <title>MyCodexAI · Remote</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/remote.css?v=remote-v2">
+</head>
+<body class="remote-page">
+    <header class="remote-header">
+        <button id="remote-menu-toggle" class="remote-menu-toggle" type="button" aria-label="เปิดเมนู" aria-controls="remote-menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+        <a class="brand remote-brand" href="/" aria-label="เปิดหน้า desktop ของ MyCodexAI">
+            <span class="brand-mark" aria-hidden="true">M</span><span>MyCodexAI</span>
+        </a>
+        <span id="remote-user" class="remote-user"></span>
+    </header>
+
+    <main class="remote-main">
+        <section class="remote-intro">
+            <p class="eyebrow">SECURE REMOTE CONTROL</p>
+            <h1>สั่งงานคอมจากมือถือ</h1>
+            <p>งานจะเข้าคิวบน MyCodexAI ในคอมของคุณ การเขียนไฟล์, คำสั่ง Terminal และ Git ยังคงต้องได้รับการอนุมัติก่อนเสมอ</p>
+        </section>
+
+        <section class="remote-card" aria-labelledby="remote-compose-title">
+            <div class="remote-card-heading">
+                <div>
+                    <p class="eyebrow">NEW REMOTE TASK</p>
+                    <h2 id="remote-compose-title">ส่งงานให้ agent</h2>
+                </div>
+                <span id="remote-connection" class="remote-connection">กำลังเชื่อมต่อ</span>
+            </div>
+            <form id="remote-form" class="remote-form">
+                <label>สิ่งที่ต้องการให้ทำ
+                    <textarea id="remote-task" required maxlength="20000" placeholder="เช่น ตรวจสอบโค้ดโปรเจกต์นี้ แล้วเสนอแผนแก้ bug โดยยังไม่แก้ไฟล์"></textarea>
+                </label>
+                <div class="remote-voice-controls" aria-label="ควบคุมด้วยเสียง">
+                    <button id="remote-voice-input" class="button secondary" type="button" aria-pressed="false">🎙️ พูดคำสั่ง</button>
+                    <button id="remote-voice-command" class="button secondary" type="button" aria-pressed="false">⌘ พูดสั่งคอม</button>
+                    <button id="remote-voice-auto-read" class="button secondary" type="button" aria-pressed="false">🔊 อ่านคำตอบ</button>
+                    <span id="remote-voice-status" class="remote-voice-status" role="status">เสียงพร้อมใช้</span>
+                </div>
+                <p class="remote-voice-note">“พูดคำสั่ง” จะแปลงเป็นข้อความให้ตรวจเอง · “พูดสั่งคอม” จะเริ่ม Agent ทันที แต่การเขียนไฟล์และรันคำสั่งยังต้องอนุมัติ</p>
+                <div class="remote-fields">
+                    <label>Worktree<select id="remote-worktree"></select></label>
+                    <label>Project<select id="remote-project"></select></label>
+                    <label>โหมด<select id="remote-mode">
+                        <option value="agent">Agent</option>
+                        <option value="expert">Expert</option>
+                        <option value="delivery">Delivery (ตรวจเทสต์และ review)</option>
+                        <option value="team">Team (ทำทีละบทบาท)</option>
+                    </select></label>
+                </div>
+                <p id="remote-error" class="remote-error" role="alert" hidden></p>
+                <button id="remote-submit" class="button primary" type="submit">ส่งงานเข้าคอม <span>→</span></button>
+            </form>
+        </section>
+
+        <section id="remote-run" class="remote-card remote-run" hidden aria-live="polite">
+            <div class="remote-card-heading">
+                <div>
+                    <p class="eyebrow">ACTIVE REMOTE TASK</p>
+                    <h2 id="remote-run-title">งานกำลังเริ่ม</h2>
+                </div>
+                <span id="remote-status" class="run-status" data-status="queued">รอคิว</span>
+            </div>
+            <p id="remote-progress" class="remote-progress"></p>
+            <div id="remote-trace" class="remote-trace"></div>
+            <div id="remote-approval" class="remote-approval" hidden>
+                <p class="eyebrow">ACTION REQUIRES APPROVAL</p>
+                <h3 id="remote-approval-title"></h3>
+                <p id="remote-approval-summary"></p>
+                <pre id="remote-approval-preview"></pre>
+                <div class="remote-actions">
+                    <button id="remote-reject" class="button secondary" type="button">ปฏิเสธ</button>
+                    <button id="remote-approve" class="button primary" type="button">อนุมัติและทำต่อ <span>→</span></button>
+                </div>
+            </div>
+            <p id="remote-answer" class="remote-answer" hidden></p>
+            <button id="remote-answer-speak" class="remote-text-button" type="button" hidden>🔊 ฟังคำตอบนี้</button>
+            <button id="remote-continue" class="remote-cancel" type="button" hidden>ทำต่อจากสถานะเดิม</button>
+            <button id="remote-cancel" class="remote-cancel" type="button" hidden>หยุดงานนี้</button>
+        </section>
+
+        <section id="remote-admin-console" class="remote-card remote-admin-console" hidden aria-labelledby="remote-admin-title">
+            <div class="remote-card-heading">
+                <div>
+                    <p class="eyebrow">ADMIN CONTROL</p>
+                    <h2 id="remote-admin-title">จัดการระบบจากมือถือ</h2>
+                </div>
+                <span class="remote-admin-badge">ADMIN</span>
+            </div>
+            <p id="remote-host-status" class="remote-progress">กำลังตรวจสถานะเครื่อง…</p>
+            <div class="remote-admin-shortcuts">
+                <a href="#remote-images">Images</a>
+                <a href="#remote-training">Training</a>
+                <a href="#remote-backups">Backup</a>
+                <a href="#remote-invites">Users</a>
+            </div>
+            <p id="remote-admin-notice" class="remote-admin-notice" role="status" hidden></p>
+
+            <details id="remote-images" class="remote-admin-section" open>
+                <summary>Image Studio <span id="remote-image-status">กำลังตรวจสอบการเชื่อมต่อกับ Hugging Face…</span></summary>
+                <div class="remote-admin-body">
+                    <label>อธิบายภาพที่ต้องการ
+                        <textarea id="remote-image-prompt" rows="3" maxlength="2000" placeholder="เช่น แมวสีส้มกำลังเขียนโค้ดในห้องมืด สไตล์ภาพยนตร์"></textarea>
+                    </label>
+                    <label class="remote-image-overlay-label">ข้อความภาษาไทยบนภาพ <span>(ไม่บังคับ)</span>
+                        <input id="remote-image-overlay-text" maxlength="160" placeholder="เช่น เปิดรับสมัครงาน วันนี้">
+                    </label>
+                    <p class="remote-image-note">ข้อความจะถูกวางบนภาพหลังสร้างเสร็จ จึงอ่านภาษาไทยได้ถูกต้อง และจะไม่ถูกส่งให้โมเดลวาดเป็นตัวอักษร</p>
+                    <div class="remote-actions remote-admin-actions">
+                        <button id="remote-generate-image" class="button primary" type="button">สร้างภาพ</button>
+                        <a id="remote-image-download" class="button secondary remote-image-download" href="#" download hidden>ดาวน์โหลดภาพ</a>
+                        <button id="remote-image-export-canva" class="button secondary" type="button" hidden>ส่งออกสำหรับ Canva</button>
+                    </div>
+                    <img id="remote-image-result" class="remote-image-result" alt="ภาพที่สร้างโดย MyCodex" hidden>
+                    <div id="remote-image-gallery" class="remote-image-gallery" aria-live="polite"></div>
+                    <p class="remote-image-note">รูปภาพเป็นส่วนตัวของบัญชีนี้ · ระบบจะไม่บันทึกคำสั่งสร้างภาพหรือโทเค็นลงในบันทึก</p>
+                </div>
+            </details>
+
+            <details id="remote-training" class="remote-admin-section" open>
+                <summary>Training Lab <span id="remote-training-status">กำลังโหลด…</span></summary>
+                <div class="remote-admin-body">
+                    <label>คำสั่งตัวอย่างที่อนุมัติแล้ว
+                        <textarea id="remote-learning-instruction" rows="3" maxlength="12000" placeholder="ระบุโจทย์ที่ต้องการให้โมเดลเรียนรู้"></textarea>
+                    </label>
+                    <label>คำตอบมาตรฐาน
+                        <textarea id="remote-learning-response" rows="4" maxlength="48000" placeholder="คำตอบหรือแนวทางที่ผ่านการตรวจแล้ว"></textarea>
+                    </label>
+                    <label>Tags (คั่นด้วย comma)
+                        <input id="remote-learning-tags" maxlength="255" placeholder="fastapi, testing, security">
+                    </label>
+                    <button id="remote-save-learning-example" class="button secondary" type="button">บันทึกตัวอย่าง</button>
+                    <label>โจทย์ Benchmark
+                        <textarea id="remote-learning-evaluation" rows="2" maxlength="12000" placeholder="โจทย์วัดผลที่ไม่มีข้อมูลลับ"></textarea>
+                    </label>
+                    <label>คำสำคัญที่ควรพบ (คั่นด้วย comma)
+                        <input id="remote-learning-terms" maxlength="240" placeholder="fastapi, testclient">
+                    </label>
+                    <div class="remote-actions remote-admin-actions">
+                        <button id="remote-save-learning-evaluation" class="button secondary" type="button">เพิ่ม Benchmark</button>
+                        <button id="remote-run-learning" class="button primary" type="button">รัน Benchmark</button>
+                    </div>
+                    <button id="remote-export-learning" class="remote-text-button" type="button">Export JSONL สำหรับ QLoRA</button>
+                </div>
+            </details>
+
+            <details id="remote-backups" class="remote-admin-section">
+                <summary>Backup เข้ารหัส <span id="remote-backup-status">กำลังโหลด…</span></summary>
+                <div class="remote-admin-body">
+                    <label>Backup passphrase ใหม่ (อย่างน้อย 16 ตัวอักษร)
+                        <input id="remote-backup-passphrase" type="password" autocomplete="new-password">
+                    </label>
+                    <label>ยืนยัน passphrase
+                        <input id="remote-backup-confirmation" type="password" autocomplete="new-password">
+                    </label>
+                    <button id="remote-create-backup" class="button secondary" type="button">สร้าง Backup</button>
+                    <hr>
+                    <label>Backup ที่ต้องการคืนค่า
+                        <select id="remote-restore-backup"></select>
+                    </label>
+                    <label>Backup passphrase
+                        <input id="remote-restore-passphrase" type="password" autocomplete="current-password">
+                    </label>
+                    <label>พิมพ์ <code id="remote-restore-phrase">RESTORE backup-id</code> เพื่อยืนยัน
+                        <input id="remote-restore-confirmation" autocomplete="off" placeholder="RESTORE backup-…">
+                    </label>
+                    <button id="remote-restore-backup-button" class="button danger" type="button">คืนค่า Workspace</button>
+                </div>
+            </details>
+
+            <details id="remote-invites" class="remote-admin-section">
+                <summary>เชิญผู้ใช้ <span>ลิงก์ใช้ได้ครั้งเดียว 7 วัน</span></summary>
+                <div class="remote-admin-body">
+                    <label>สิทธิ์บัญชีใหม่
+                        <select id="remote-invite-role"><option value="user">User</option><option value="admin">Admin</option></select>
+                    </label>
+                    <button id="remote-create-invite" class="button secondary" type="button">สร้างคำเชิญ</button>
+                    <pre id="remote-invite-token" class="remote-secret-output" hidden></pre>
+                </div>
+            </details>
+
+            <details id="remote-github" class="remote-admin-section">
+                <summary>GitHub &amp; CI <span id="remote-github-status">กำลังโหลด…</span></summary>
+                <div class="remote-admin-body">
+                    <div class="remote-actions remote-admin-actions">
+                        <button id="remote-github-refresh" class="button secondary" type="button">ตรวจใหม่</button>
+                        <button id="remote-github-connect" class="button secondary" type="button">เชื่อม Repo</button>
+                        <button id="remote-github-ci" class="button secondary" type="button">สร้าง CI</button>
+                        <button id="remote-github-push" class="button primary" type="button">Push</button>
+                    </div>
+                    <button id="remote-github-pr" class="remote-text-button" type="button">เปิด Pull Request</button>
+                    <pre id="remote-github-output" class="remote-secret-output" hidden></pre>
+                </div>
+            </details>
+        </section>
+
+        <section class="remote-safety">
+            <span aria-hidden="true">✓</span>
+            <p><strong>Remote นี้ไม่ใช่ shell โดยตรง</strong> ทุกงานยังใช้สิทธิ์บัญชีคุณ, workspace ที่เลือก และระบบ approval เดิม</p>
+        </section>
+    </main>
+
+    <button id="remote-menu-backdrop" class="remote-menu-backdrop" type="button" aria-label="ปิดเมนู" tabindex="-1"></button>
+    <nav id="remote-menu" class="remote-nav" aria-label="Remote actions" aria-hidden="true" inert>
+        <div class="remote-nav-heading"><span>Menu</span><button id="remote-menu-close" type="button" aria-label="ปิดเมนู">×</button></div>
+        <a href="/">หน้าเต็ม</a>
+        <a href="/images">Image Studio</a>
+        <a href="#remote-task" id="remote-new-task">งานใหม่</a>
+        <button id="remote-logout" type="button">ออกจากระบบ</button>
+        <button id="remote-notifications" type="button">แจ้งเตือน</button>
+        <a href="#remote-admin-console" id="remote-admin-nav" hidden>Admin Control</a>
+    </nav>
+    <script src="/static/pwa.js"></script>
+    <script src="/static/voice.js?v=voice-jarvis-v2"></script>
+    <script src="/static/remote.js?v=voice-jarvis-v1"></script>
+</body>
+</html>

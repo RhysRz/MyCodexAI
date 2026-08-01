@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101113">
+  <title>MyCodexAI Cloud</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="app-page">
+  <button id="backdrop" class="backdrop hidden" aria-label="ปิดเมนู"></button>
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head"><div class="brand"><span class="brand-mark small">M</span><strong>MyCodexAI</strong></div><button id="close-sidebar" class="icon-button mobile-only" aria-label="ปิดเมนู">×</button></div>
+    <button id="new-chat" class="new-chat">＋ งานใหม่</button>
+    <nav class="main-nav" aria-label="เมนูหลัก">
+      <button class="nav-item active" data-view="chat">⌘ แชทกับ MyCodex</button>
+      <button class="nav-item" data-view="agent">↗ Cloud Agent</button>
+      <button class="nav-item" data-view="files">＋ ไฟล์แนบ</button>
+      <button class="nav-item admin-only hidden" data-view="admin">⚙ ผู้ดูแลระบบ</button>
+    </nav>
+    <div class="history-head"><span>ประวัติแชท</span><button id="refresh-history" class="icon-button" aria-label="โหลดใหม่">↻</button></div>
+    <div id="conversation-list" class="conversation-list"></div>
+    <div class="account-card">
+      <div><strong id="account-name">กำลังโหลด…</strong><small id="account-role">Cloud account</small></div>
+      <button id="logout" class="icon-button" title="ออกจากระบบ">↪</button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="topbar">
+      <button id="open-sidebar" class="icon-button mobile-only" aria-label="เปิดเมนู">☰</button>
+      <div><strong id="view-title">MyCodex</strong><small id="cloud-state">Cloudflare · กำลังตรวจสอบ</small></div>
+      <span class="online-dot" title="พร้อมใช้งาน"></span>
+    </header>
+
+    <section id="view-chat" class="view active-view">
+      <div id="messages" class="messages" aria-live="polite">
+        <div class="welcome"><div class="brand-mark">M</div><h1>สวัสดีครับ ผม MyCodex</h1><p>คุย ถาม หรือให้ช่วยวางแผนได้ตามปกติ งานที่ต้องแก้โค้ดให้เลือก Cloud Agent</p></div>
+      </div>
+      <form id="composer" class="composer">
+        <textarea id="message-input" rows="1" maxlength="8000" placeholder="ส่งข้อความให้ MyCodex…" required></textarea>
+        <div class="composer-row"><span class="muted tiny">Enter เพื่อส่ง · Shift+Enter ขึ้นบรรทัดใหม่</span><button class="send-button" type="submit" aria-label="ส่งข้อความ">↑</button></div>
+      </form>
+    </section>
+
+    <section id="view-agent" class="view">
+      <div class="panel narrow">
+        <p class="eyebrow">CLOUD AGENT</p><h1>สั่งแก้โปรเจกต์ผ่าน Pull Request</h1>
+        <p class="muted">งานหนักจะไปรันบน GitHub ทีละงาน เครื่องของคุณไม่ต้องเปิดไว้</p>
+        <form id="agent-form">
+          <label>คำสั่งงาน<textarea id="agent-task" rows="7" maxlength="20000" placeholder="เช่น ตรวจสอบบั๊กหน้าเข้าสู่ระบบ แก้ไข ทดสอบ และเปิด Pull Request" required></textarea></label>
+          <label>โหมด<select id="agent-mode"><option value="agent">Agent</option><option value="project">สร้างโปรเจกต์</option><option value="review">ตรวจโค้ด</option><option value="delivery">ส่งมอบงาน</option></select></label>
+          <fieldset><legend>ไฟล์แนบ</legend><div id="agent-files" class="check-list muted">ยังไม่มีไฟล์พร้อมใช้</div></fieldset>
+          <button class="primary" type="submit">ส่งเข้าคิว Agent</button>
+        </form>
+      </div>
+      <div class="panel"><div class="section-title"><h2>สถานะงาน</h2><button id="refresh-runs" class="secondary">โหลดใหม่</button></div><div id="run-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-files" class="view">
+      <div class="panel narrow"><p class="eyebrow">ATTACHMENTS</p><h1>ไฟล์ชั่วคราวบนคลาวด์</h1><p class="muted">ไม่เกินไฟล์ละ 10 MB รวม 50 MB และลบอัตโนมัติใน 7 วัน</p><label class="upload-box">เลือกไฟล์<input id="file-picker" type="file" multiple></label><div id="upload-status" class="muted"></div></div>
+      <div class="panel"><div class="section-title"><h2>ไฟล์ของฉัน</h2><button id="refresh-files" class="secondary">โหลดใหม่</button></div><div id="file-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-admin" class="view">
+      <div class="panel narrow"><p class="eyebrow">ADMIN</p><h1>เชิญผู้ใช้</h1><p class="muted">ลิงก์เชิญใช้ได้ครั้งเดียวและหมดอายุใน 24 ชั่วโมง</p><div class="inline"><select id="invite-role"><option value="user">ผู้ใช้ทั่วไป</option><option value="admin">ผู้ดูแลระบบ</option></select><button id="create-invite" class="primary">สร้างคำเชิญ</button></div><textarea id="invite-result" rows="3" readonly placeholder="โทเคนคำเชิญจะแสดงที่นี่"></textarea></div>
+      <div class="panel narrow"><h2>อุปกรณ์ที่เข้าสู่ระบบ</h2><div id="session-list" class="card-list"></div><button id="revoke-sessions" class="danger">ออกจากระบบอุปกรณ์อื่นทั้งหมด</button></div>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

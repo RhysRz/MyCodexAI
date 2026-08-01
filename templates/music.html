@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
+    <title>MyCodexAI · Music Lab</title>
+    <link rel="stylesheet" href="/static/music.css?v=music-v6">
+</head>
+<body>
+    <header class="music-header">
+        <a href="/" class="brand"><b>M</b> MyCodexAI</a>
+        <nav><a href="/">งาน</a><a href="/images">Image Studio</a><a href="/remote">Remote</a></nav>
+    </header>
+    <main class="music-main">
+        <section class="music-panel upload-panel">
+            <p class="eyebrow">MUSIC LAB · BETA</p>
+            <h1>แกะเพลงด้วย MyCodex</h1>
+            <p id="music-status" class="muted">กำลังตรวจสอบ Music Lab…</p>
+            <label class="file-drop" for="music-file">
+                <strong>เลือกเพลง WAV หรือ PDF โน้ต/Chord sheet/TAB</strong>
+                <span>WAV PCM ไม่เกิน 80 MB / PDF ไม่เกิน 20 MB · PDF สแกนใช้ OMR เมื่อผู้ดูแลตั้งค่าไว้</span>
+                <input id="music-file" type="file" accept="audio/wav,.wav,.wave,application/pdf,.pdf">
+            </label>
+            <div class="actions"><button id="music-upload" type="button">อัปโหลด</button><button id="music-analyze" type="button" disabled>วิเคราะห์เพลง / โน้ต</button><a id="music-source" class="button-link" href="#" target="_blank" hidden>เปิดไฟล์ต้นฉบับ</a></div>
+            <p class="muted warning">ผลคอร์ด โน้ต และแท็บเป็นการประมาณจากเพลงมิกซ์รวม ควรฟังตรวจทานก่อนเล่น บันทึก หรือเผยแพร่</p>
+            <audio id="music-player" controls hidden></audio>
+        </section>
+
+        <aside class="music-panel library-panel">
+            <h2>เพลงของคุณ</h2>
+            <div id="music-library" class="music-library" aria-live="polite"></div>
+        </aside>
+
+        <section id="music-results" class="music-results" hidden>
+            <div class="music-panel overview-panel">
+                <p class="eyebrow">ANALYSIS</p>
+                <h2 id="music-title">ผลการวิเคราะห์</h2>
+                <div id="music-facts" class="facts"></div>
+                <div class="downloads">
+                    <a id="music-midi" class="button-link" href="#" download hidden>ดาวน์โหลด MIDI</a>
+                    <a id="music-chords" class="button-link" href="#" download hidden>ดาวน์โหลดคอร์ด</a>
+                    <a id="music-tab" class="button-link" href="#" download hidden>ดาวน์โหลด Guitar TAB</a>
+                    <a id="music-json" class="button-link" href="#" download hidden>ดาวน์โหลดรายงาน JSON</a>
+                </div>
+                <div class="playback-controls">
+                    <label for="music-instrument">ฟังร่างโน้ตด้วยเครื่องดนตรี</label>
+                    <select id="music-instrument"><option value="piano">เปียโนอะคูสติก</option><option value="guitar">กีตาร์โปร่งดีดสาย</option><option value="bass">เบสไฟฟ้า</option><option value="strings">สตริงเอนเซมเบิล</option><option value="flute">ฟลุต</option></select>
+                    <button id="music-play" type="button" disabled>▶ เล่นเสียงคุณภาพสูง</button><button id="music-stop" type="button" disabled>■ หยุด</button>
+                </div>
+                <p id="music-playback-note" class="muted">เป็นเสียงสังเคราะห์แบบจำลองเครื่องดนตรีจากร่างโน้ต ไม่ใช่เสียงต้นฉบับของเพลง</p>
+            </div>
+            <div class="result-grid">
+                <section class="music-panel"><h2>คอร์ดตามเวลา</h2><div id="music-chord-list" class="timeline-list"></div></section>
+                <section class="music-panel"><h2>โน้ตหลัก</h2><div id="music-note-list" class="note-list"></div></section>
+                <section id="music-tab-panel" class="music-panel" hidden><h2>อ่านสายและเฟรตจาก TAB</h2><p id="music-tab-summary" class="muted"></p><div id="music-tab-details" class="timeline-list"></div></section>
+                <section class="music-panel"><h2>เครื่องดนตรีที่คาดว่าอยู่ในเพลง</h2><div id="music-parts" class="parts-list"></div></section>
+                <section class="music-panel"><h2>การแยก Stem</h2><p id="music-stems" class="muted"></p></section>
+            </div>
+        </section>
+    </main>
+    <script src="/static/music.js?v=music-v6"></script>
+</body>
+</html>

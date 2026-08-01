@@ -1,0 +1,35 @@
+{
+    # Caddy's management API is not needed for this single-site deployment.
+    admin off
+    email {$ACME_EMAIL}
+}
+
+# Set MYCODEXAI_DOMAIN to the exact public hostname, for example ai.example.com.
+{$MYCODEXAI_DOMAIN} {
+    encode zstd gzip
+
+    # Reject oversized bodies before they reach the Python process.
+    request_body {
+        max_size 110MB
+    }
+
+    # Do not disclose Caddy; the app also emits its own defense-in-depth headers.
+    header {
+        -Server
+    }
+
+    reverse_proxy 127.0.0.1:8000 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+
+    log {
+        output file /var/log/caddy/mycodexai.access.json {
+            roll_size 10MiB
+            roll_keep 10
+            roll_keep_for 720h
+        }
+        format json
+    }
+}

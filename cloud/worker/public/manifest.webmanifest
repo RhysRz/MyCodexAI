@@ -1,0 +1,10 @@
+{
+  "name": "MyCodexAI Cloud",
+  "short_name": "MyCodex",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101113",
+  "theme_color": "#101113",
+  "lang": "th",
+  "icons": []
+}

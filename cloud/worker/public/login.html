@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101113">
+  <title>เข้าสู่ระบบ · MyCodexAI Cloud</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <div class="brand-mark">M</div>
+    <p class="eyebrow">MYCODEXAI CLOUD</p>
+    <h1 id="auth-title">เข้าสู่ระบบ</h1>
+    <p class="muted" id="auth-lead">ใช้บัญชี MyCodexAI Cloud ของคุณ</p>
+    <form id="auth-form" autocomplete="on">
+      <label>ชื่อผู้ใช้<input id="username" name="username" minlength="3" maxlength="64" autocomplete="username" required></label>
+      <label>รหัสผ่าน<input id="password" name="password" type="password" minlength="12" autocomplete="current-password" required></label>
+      <label id="bootstrap-wrap" class="hidden">โทเคนตั้งค่าครั้งแรก<input id="bootstrap-token" name="bootstrap_token" type="password" autocomplete="off"></label>
+      <button class="primary wide" type="submit" id="auth-submit">เข้าสู่ระบบ</button>
+    </form>
+    <p id="auth-error" class="error" role="alert" aria-live="polite"></p>
+    <p class="auth-foot">การเชื่อมต่อเข้ารหัสด้วย HTTPS · ไม่บันทึกรหัสผ่านหรือโทเคนลง Audit log</p>
+  </main>
+  <script src="/login.js" defer></script>
+</body>
+</html>

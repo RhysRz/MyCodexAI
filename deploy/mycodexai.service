@@ -1,0 +1,32 @@
+[Unit]
+Description=MyCodexAI private coding-agent web service
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mycodexai
+Group=mycodexai
+WorkingDirectory=/opt/mycodexai
+EnvironmentFile=/etc/mycodexai/mycodexai.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/mycodexai/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/mycodexai
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
