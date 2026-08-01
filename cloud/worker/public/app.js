@@ -50,7 +50,7 @@ function openSidebar() {
 function showView(name) {
   $$(".view").forEach((node) => node.classList.toggle("active-view", node.id === `view-${name}`));
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === name));
-  const titles = { chat: "MyCodex", agent: "Cloud Agent", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
+  const titles = { chat: "MyCodex", agent: "Cloud Agent", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", account: "บัญชีและความปลอดภัย", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
   $("#view-title").textContent = titles[name] || "MyCodexAI";
   closeSidebar();
   if (name === "agent") loadRuns();
@@ -59,7 +59,7 @@ function showView(name) {
   if (name === "music") loadMusicJobs();
   if (name === "training") loadTraining();
   if (name === "system") loadSystem();
-  if (name === "admin") Promise.all([loadSessions(), loadMfa()]).catch((error) => toast(error.message));
+  if (name === "account") Promise.all([loadSessions(), loadMfa(), loadOAuth()]).catch((error) => toast(error.message));
 }
 
 function addBubble(role, content, pending = false) {
@@ -264,6 +264,36 @@ async function loadMfa() {
   $("#mfa-setup").textContent = status.pending ? "สร้างรหัสตั้งค่าใหม่" : "เริ่มตั้งค่า MFA";
   $("#mfa-setup").disabled = Boolean(status.enabled);
   if (status.enabled) $("#mfa-enroll").classList.add("hidden");
+}
+
+async function loadOAuth() {
+  const data = await api("/api/auth/oauth/providers");
+  const list = $("#oauth-links"); list.replaceChildren();
+  for (const provider of ["google", "github"]) {
+    const state = data.providers?.[provider] || { configured: false, linked: false };
+    const configured = typeof state === "boolean" ? state : Boolean(state.configured);
+    const linked = typeof state === "object" && Boolean(state.linked);
+    const card = element("article", "item-card");
+    card.append(
+      element("h3", "", provider === "google" ? "Google" : "GitHub"),
+      element("p", "", linked ? "เชื่อมกับบัญชีนี้แล้ว" : configured ? "พร้อมให้เชื่อมต่อ" : "ยังไม่ได้ตั้งค่า Client ID และ Secret"),
+    );
+    if (configured) {
+      const button = element("button", linked ? "danger" : "secondary", linked ? "ยกเลิกการเชื่อมต่อ" : "เชื่อมบัญชี");
+      button.addEventListener("click", async () => {
+        if (linked) {
+          await api(`/api/auth/oauth/${provider}`, { method: "DELETE", body: "{}" });
+          toast(`ยกเลิกการเชื่อมต่อ ${provider} แล้ว`);
+          await loadOAuth();
+          return;
+        }
+        const result = await api(`/api/auth/oauth/${provider}/link/start`, { method: "POST", body: "{}" });
+        location.href = result.authorization_url;
+      });
+      card.append(button);
+    }
+    list.append(card);
+  }
 }
 
 async function beginMfaSetup() {
@@ -482,8 +512,8 @@ async function loadSystem() {
   const capabilities = $("#capability-list"); capabilities.replaceChildren();
   overview.capabilities.forEach((item) => {
     const card = element("article", "item-card capability-card");
-    const ready = item.state !== "remote-worker-required";
-    const stateLabel = item.state === "cloud-runner" ? "พร้อมผ่าน GitHub Runner" : ready ? "พร้อมบน Cloud" : "ต้องเชื่อม Remote Worker";
+    const ready = !["remote-worker-required", "configuration-required"].includes(item.state);
+    const stateLabel = item.state === "cloud-runner" ? "พร้อมผ่าน GitHub Runner" : item.state === "configuration-required" ? "รอตั้งค่า Client ID / Secret" : ready ? "พร้อมบน Cloud" : "ต้องเชื่อม Remote Worker";
     card.append(element("h3", "", item.label), element("span", `badge${ready ? "" : " warning"}`, stateLabel));
     capabilities.append(card);
   });
@@ -504,6 +534,11 @@ async function boot() {
   const status = await api("/api/cloud/status");
   $("#cloud-state").textContent = status.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
   await Promise.all([loadHistory(), loadFiles(), loadImageStatus()]);
+  const query = new URLSearchParams(location.search);
+  if (query.get("oauth_success") === "linked") toast("เชื่อมบัญชี Social Login แล้ว");
+  if (query.get("oauth_success") === "login") toast("เข้าสู่ระบบด้วย Social Login แล้ว");
+  if (query.get("oauth_error")) toast("เชื่อมบัญชี Social Login ไม่สำเร็จหรือบัญชีนี้ถูกใช้งานแล้ว");
+  if (query.has("oauth_success") || query.has("oauth_error")) history.replaceState(null, "", location.pathname);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 

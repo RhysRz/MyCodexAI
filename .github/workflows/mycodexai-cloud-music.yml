@@ -36,6 +36,7 @@ jobs:
       MYCODEXAI_MUSIC_FILE_ID: ${{ github.event.client_payload.file_id || inputs.file_id }}
       MYCODEXAI_MUSIC_FILE_NAME: ${{ github.event.client_payload.file_name || inputs.file_name }}
       MYCODEXAI_MUSIC_USER_ID: ${{ github.event.client_payload.user_id || inputs.user_id }}
+      MUSIC_OMR_EXECUTABLE: /opt/audiveris/bin/Audiveris
     steps:
       - name: Check out private repository
         uses: actions/checkout@v4
@@ -48,6 +49,29 @@ jobs:
 
       - name: Install project dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Cache Audiveris installer
+        if: endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.pdf') || endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.PDF')
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mycodexai/Audiveris-5.11.0-ubuntu24.04-x86_64.deb
+          key: audiveris-5.11.0-ubuntu24.04-x86_64-f20113aa
+
+      - name: Install verified Audiveris OMR
+        if: endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.pdf') || endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.PDF')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cache/mycodexai"
+          deb="$HOME/.cache/mycodexai/Audiveris-5.11.0-ubuntu24.04-x86_64.deb"
+          if [[ ! -f "$deb" ]]; then
+            curl --fail --location --retry 3 --output "$deb" \
+              "https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb"
+          fi
+          echo "f20113aaa33b3149ec8d6a09b2a7963360e65fafd92d69389987a85bbc3ec7a3  $deb" | sha256sum --check --strict
+          sudo apt-get install --yes "$deb"
+          test -x "$MUSIC_OMR_EXECUTABLE"
+          "$MUSIC_OMR_EXECUTABLE" -version
 
       - name: Analyze one private music file
         run: python cloud/runner/run_music_job.py

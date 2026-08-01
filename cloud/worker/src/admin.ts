@@ -32,8 +32,15 @@ async function overview(context: RequestContext): Promise<Response> {
       { id: "files", label: "ไฟล์แนบชั่วคราว", state: "cloud-native" },
       { id: "images", label: "Image Studio", state: "cloud-native" },
       { id: "training", label: "Training Lab", state: "cloud-native" },
+      {
+        id: "oauth",
+        label: "Social Login (Google / GitHub)",
+        state: (context.env.OAUTH_GOOGLE_CLIENT_ID && context.env.OAUTH_GOOGLE_CLIENT_SECRET)
+          || (context.env.OAUTH_GITHUB_CLIENT_ID && context.env.OAUTH_GITHUB_CLIENT_SECRET)
+          ? "cloud-native" : "configuration-required",
+      },
       { id: "music", label: "Music Lab สำหรับ PDF, TAB และ WAV", state: "cloud-runner" },
-      { id: "scanned_omr", label: "OMR สำหรับ PDF สแกน", state: "remote-worker-required" },
+      { id: "scanned_omr", label: "OMR สำหรับ PDF สแกน", state: "cloud-runner" },
       { id: "terminal", label: "Safe Terminal และ Docker sandbox", state: "remote-worker-required" },
       { id: "ollama", label: "Ollama บนเครื่อง", state: "remote-worker-required" },
     ],

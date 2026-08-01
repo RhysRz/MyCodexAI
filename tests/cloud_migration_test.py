@@ -21,10 +21,12 @@ def test_cloud_worker_has_required_components() -> None:
         WORKER / "src" / "admin.ts",
         WORKER / "src" / "music.ts",
         WORKER / "src" / "mfa.ts",
+        WORKER / "src" / "oauth.ts",
         WORKER / "migrations" / "0001_initial.sql",
         WORKER / "migrations" / "0002_cloud_parity.sql",
         WORKER / "migrations" / "0003_cloud_music.sql",
         WORKER / "migrations" / "0004_cloud_mfa.sql",
+        WORKER / "migrations" / "0005_cloud_oauth.sql",
         ROOT / ".github" / "workflows" / "mycodexai-cloud-agent.yml",
         ROOT / "cloud" / "runner" / "run_job.py",
         ROOT / "cloud" / "runner" / "run_music_job.py",
@@ -66,7 +68,10 @@ def test_cloud_does_not_embed_secret_values() -> None:
         if path.suffix.lower() not in {".ts", ".js", ".json", ".jsonc", ".yml", ".yaml", ".py", ".ps1", ".md", ".sql"}:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
-        for name in ("GITHUB_TOKEN", "RUNNER_CALLBACK_SECRET", "CLOUD_BOOTSTRAP_TOKEN", "AUTH_ENCRYPTION_KEY"):
+        for name in (
+            "GITHUB_TOKEN", "RUNNER_CALLBACK_SECRET", "CLOUD_BOOTSTRAP_TOKEN", "AUTH_ENCRYPTION_KEY",
+            "OAUTH_GOOGLE_CLIENT_SECRET", "OAUTH_GITHUB_CLIENT_SECRET",
+        ):
             for line in text.splitlines():
                 compact = line.strip()
                 if compact.startswith(f"{name}=") and "replace-" not in compact:
@@ -139,6 +144,9 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "permissions:\n  contents: read" in workflow
     assert "MusicService.analyze" in runner
     assert "download_source" in runner
+    assert "Audiveris-5.11.0-ubuntu24.04-x86_64.deb" in workflow
+    assert "f20113aaa33b3149ec8d6a09b2a7963360e65fafd92d69389987a85bbc3ec7a3" in workflow
+    assert 'os.environ.setdefault("MUSIC_OMR_EXECUTABLE", "")' in runner
 
 
 def test_cloud_image_caption_is_composed_outside_the_model() -> None:
@@ -166,3 +174,18 @@ def test_cloud_mfa_and_fresh_shell_assets_are_wired() -> None:
     assert 'id="mfa-secret"' in (WORKER / "public" / "index.html").read_text(encoding="utf-8")
     assert "new Date(session.last_seen_at)" in app
     assert "skipWaiting" in service_worker and "fetch(event.request)" in service_worker
+
+
+def test_cloud_oauth_is_link_first_pkce_and_mfa_aware() -> None:
+    oauth = (WORKER / "src" / "oauth.ts").read_text(encoding="utf-8")
+    worker = (WORKER / "src" / "index.ts").read_text(encoding="utf-8")
+    login = (WORKER / "public" / "login.html").read_text(encoding="utf-8")
+    page = (WORKER / "public" / "index.html").read_text(encoding="utf-8")
+    assert "handleOAuth" in worker
+    assert 'action: "login" | "link"' in oauth
+    assert 'code_challenge_method", "S256"' in oauth
+    assert "oauth_identities JOIN users" in oauth
+    assert "oauth_mfa_challenges" in oauth
+    assert "accessToken" in oauth and "token omitted" in oauth
+    assert 'id="oauth-login"' in login
+    assert 'id="view-account"' in page

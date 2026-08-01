@@ -277,8 +277,5 @@ export async function handleAuth(context: RequestContext, path: string): Promise
   if (path === "/api/auth/mfa" && context.request.method === "GET") return mfaStatus(context);
   if (path === "/api/auth/mfa/setup" && context.request.method === "POST") return setupMfa(context);
   if (path === "/api/auth/mfa/enable" && context.request.method === "POST") return enableMfa(context);
-  if (path === "/api/auth/oauth/providers" && context.request.method === "GET") {
-    return json({ providers: { google: false, github: false } });
-  }
   return null;
 }

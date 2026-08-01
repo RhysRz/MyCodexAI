@@ -6,6 +6,7 @@ import { handleImages } from "./images";
 import { handleLearning } from "./learning";
 import { handleAdmin } from "./admin";
 import { handleMusic } from "./music";
+import { handleOAuth } from "./oauth";
 import { currentUser, epochSeconds, errorJson, json, sameOrigin, secure } from "./security";
 import type { AgentQueueMessage, Env, RequestContext } from "./types";
 
@@ -32,7 +33,7 @@ async function route(request: Request, env: Env, execution: ExecutionContext): P
   if (path === "/api/health" && request.method === "GET") return json({ status: "ok", runtime: "cloudflare-workers" });
 
   const context: RequestContext = { request, env, execution, user: await currentUser(request, env) };
-  const handlers = [handleAuth, handleChat, handleAgent, handleFiles, handleImages, handleLearning, handleAdmin, handleMusic];
+  const handlers = [handleOAuth, handleAuth, handleChat, handleAgent, handleFiles, handleImages, handleLearning, handleAdmin, handleMusic];
   for (const handler of handlers) {
     const response = await handler(context, path);
     if (response) return response;
@@ -68,6 +69,8 @@ export default {
       env.DB.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now),
       env.DB.prepare("DELETE FROM invites WHERE expires_at <= ?").bind(now),
       env.DB.prepare("DELETE FROM login_limits WHERE blocked_until < ? AND window_started_at < ?").bind(now - 86_400, now - 86_400),
+      env.DB.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").bind(now),
+      env.DB.prepare("DELETE FROM oauth_mfa_challenges WHERE expires_at <= ?").bind(now),
       env.DB.prepare("DELETE FROM audit_events WHERE created_at < ?").bind(now - 90 * 86_400),
     ]);
     await cleanupExpiredFiles(env);

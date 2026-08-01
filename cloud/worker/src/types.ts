@@ -21,6 +21,10 @@ export interface Env {
   RUNNER_CALLBACK_SECRET: string;
   CLOUD_BOOTSTRAP_TOKEN: string;
   AUTH_ENCRYPTION_KEY: string;
+  OAUTH_GOOGLE_CLIENT_ID?: string;
+  OAUTH_GOOGLE_CLIENT_SECRET?: string;
+  OAUTH_GITHUB_CLIENT_ID?: string;
+  OAUTH_GITHUB_CLIENT_SECRET?: string;
   PUBLIC_ORIGIN?: string;
   SESSION_HOURS?: string;
   AGENT_DAILY_LIMIT?: string;

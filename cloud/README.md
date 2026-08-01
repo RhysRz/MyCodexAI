@@ -13,7 +13,7 @@
 - GitHub Actions Music: วิเคราะห์ PDF/TAB/WAV และส่งออก Analysis, MIDI, คอร์ด และ TAB
 - Web Speech API: รับเสียงภาษาไทยและอ่านคำตอบออกเสียงบนอุปกรณ์ที่รองรับ
 
-ข้อจำกัดของรุ่นฟรี: ไฟล์แนบไม่เกิน 10 MB ต่อไฟล์ รวม 50 MB ต่อบัญชีและหมดอายุใน 7 วัน งาน Agent และ Music Lab จะรอตามคิวของ repository ส่วนตัวนี้ ไม่ใช่คิวจากผู้ใช้ Workers AI คนอื่นโดยตรง PDF โน้ต/TAB แบบเวกเตอร์และ WAV ใช้งานได้ แต่ PDF สแกนล้วนยังต้องเพิ่ม OMR engine ใน GitHub Runner เมื่อโควต้าของผู้ให้บริการหมด ระบบจะหยุดรอรอบรีเซ็ตและไม่คิดเงินหากไม่ได้ผูกวิธีชำระเงิน
+ข้อจำกัดของรุ่นฟรี: ไฟล์แนบไม่เกิน 10 MB ต่อไฟล์ รวม 50 MB ต่อบัญชีและหมดอายุใน 7 วัน งาน Agent และ Music Lab จะรอตามคิวของ repository ส่วนตัวนี้ ไม่ใช่คิวจากผู้ใช้ Workers AI คนอื่นโดยตรง PDF โน้ต/TAB แบบเวกเตอร์, PDF สแกนผ่าน Audiveris OMR และ WAV ใช้งานได้ เมื่อโควต้าของผู้ให้บริการหมด ระบบจะหยุดรอรอบรีเซ็ตและไม่คิดเงินหากไม่ได้ผูกวิธีชำระเงิน
 
 ## 1. เตรียม GitHub แบบ Private
 
@@ -51,6 +51,7 @@ cd C:\MyCodexAI\cloud\worker
 npx wrangler secret put GITHUB_TOKEN
 npx wrangler secret put RUNNER_CALLBACK_SECRET
 npx wrangler secret put CLOUD_BOOTSTRAP_TOKEN
+npx wrangler secret put AUTH_ENCRYPTION_KEY
 ```
 
 Wrangler จะให้พิมพ์ค่าแบบไม่บันทึกลง repository
@@ -78,6 +79,24 @@ cd C:\MyCodexAI
 เปิด workers.dev URL หน้าแรกจะแสดงฟอร์มสร้าง Admin ให้กำหนดชื่อผู้ใช้และรหัสผ่านใหม่อย่างน้อย 12 ตัวอักษร พร้อมใส่ `CLOUD_BOOTSTRAP_TOKEN` ครั้งเดียว หลังมี Admin แล้ว endpoint bootstrap จะปฏิเสธการสร้างบัญชีเพิ่ม
 
 บัญชี Cloud เป็นบัญชีใหม่ รหัส Argon2 ของระบบ Local จะไม่ถูกคัดลอกหรือถอดรหัส ผู้ใช้ทั่วไปต้องรับลิงก์เชิญแบบใช้ครั้งเดียวจากหน้า Admin
+
+## 7. เปิด Social Login (ไม่บังคับ)
+
+ระบบใช้ OAuth แบบ link-first: ผู้ใช้ต้องเข้าสู่ระบบด้วยรหัสผ่านและเชื่อมบัญชีจากหน้า **บัญชีและความปลอดภัย** ก่อน จึงจะใช้ Google/GitHub Login ได้ ระบบไม่สร้างผู้ใช้หรือ Admin จากบัญชี Social อัตโนมัติ และไม่เก็บ access token
+
+ตั้ง Redirect URL ของแต่ละผู้ให้บริการเป็น:
+
+- `https://<workers-domain>/api/auth/oauth/google/callback`
+- `https://<workers-domain>/api/auth/oauth/github/callback`
+
+จากนั้นตั้ง Client ID เป็น Worker variable และ Client Secret ผ่าน Wrangler secret โดยห้าม commit ค่าจริง:
+
+```powershell
+npx wrangler secret put OAUTH_GOOGLE_CLIENT_ID
+npx wrangler secret put OAUTH_GOOGLE_CLIENT_SECRET
+npx wrangler secret put OAUTH_GITHUB_CLIENT_ID
+npx wrangler secret put OAUTH_GITHUB_CLIENT_SECRET
+```
 
 ## การย้อนกลับ
 
