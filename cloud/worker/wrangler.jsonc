@@ -49,8 +49,8 @@
 	},
 	"vars": {
 		"AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
-		"GITHUB_OWNER": "REPLACE_WITH_GITHUB_USERNAME",
-		"GITHUB_REPO": "REPLACE_WITH_PRIVATE_REPOSITORY",
+		"GITHUB_OWNER": "RhysRz",
+		"GITHUB_REPO": "MyCodexAI",
 		"PUBLIC_ORIGIN": "https://mycodexai-cloud.mycodexai-cloud-worker.workers.dev",
 		"SESSION_HOURS": "24",
 		"AGENT_DAILY_LIMIT": "12"
