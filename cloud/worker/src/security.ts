@@ -1,7 +1,10 @@
 import type { CloudUser, Env } from "./types";
 
 export const SESSION_COOKIE = "__Host-mycodexai_cloud";
-const PASSWORD_ITERATIONS = 120_000;
+// Cloudflare Workers currently reject PBKDF2 iteration counts above 100,000.
+// Keep this at the platform maximum so password hashing remains as strong as
+// the runtime permits without breaking account bootstrap or login.
+const PASSWORD_ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
 export function epochSeconds(): number {

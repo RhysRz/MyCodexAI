@@ -70,6 +70,12 @@ def test_security_headers_and_protected_paths_exist() -> None:
     assert '".env"' in agent and '".env"' in runner
 
 
+def test_password_hashing_uses_cloudflare_supported_iterations() -> None:
+    security = (WORKER / "src" / "security.ts").read_text(encoding="utf-8")
+    assert "const PASSWORD_ITERATIONS = 100_000;" in security
+    assert "const PASSWORD_ITERATIONS = 120_000;" not in security
+
+
 def test_mobile_ui_uses_external_scripts_and_safe_rendering() -> None:
     index = (WORKER / "public" / "index.html").read_text(encoding="utf-8")
     app = (WORKER / "public" / "app.js").read_text(encoding="utf-8")
