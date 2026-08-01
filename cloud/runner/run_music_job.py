@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import shutil
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,6 +22,8 @@ USER_ID = os.environ["MYCODEXAI_MUSIC_USER_ID"]
 CLOUD_URL = os.environ["MYCODEXAI_CLOUD_URL"].rstrip("/")
 RUNNER_SECRET = os.environ["MYCODEXAI_RUNNER_SECRET"]
 STATE_ROOT = ROOT / ".mycodexai-music-job" / "runs"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # app.core.settings is strict even though MusicService does not use Ollama.
 os.environ.setdefault("APP_NAME", "MyCodexAI Cloud Music")
