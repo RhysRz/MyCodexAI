@@ -41,6 +41,11 @@ def test_agent_queue_is_serial_and_pr_reviewed() -> None:
     assert 'callback("needs_review"' in runner
 
 
+def test_authenticated_index_asset_does_not_self_redirect() -> None:
+    config = (WORKER / "wrangler.jsonc").read_text(encoding="utf-8")
+    assert '"html_handling": "none"' in config
+
+
 def test_cloud_does_not_embed_secret_values() -> None:
     allowed_placeholders = {".dev.vars.example"}
     suspicious_assignments: list[str] = []
