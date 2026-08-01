@@ -12,6 +12,7 @@ from reportlab.pdfgen import canvas
 from app.core.settings import settings
 from app.services.auth_service import AuthenticatedUser
 from app.services.music_service import MusicError, MusicService
+from app.services.advanced_music_service import AdvancedMusicService
 
 
 def wav_bytes() -> bytes:
@@ -175,3 +176,52 @@ def test_sample_renderer_has_a_memory_guard_and_high_quality_sample_rate():
     assert "music_render_min_available_mb" in source
     assert '"-r", "48000"' in source
     assert "ResourceService.snapshot()" in source
+
+
+def test_compressed_audio_uses_trusted_transcoder_and_keeps_private_wav(monkeypatch):
+    original_root = settings.agent_state_root
+    owner = AuthenticatedUser("compressed-owner", "owner", "user")
+    try:
+        with TemporaryDirectory() as directory:
+            settings.agent_state_root = str(Path(directory) / "runs")
+            monkeypatch.setattr(MusicService, "_transcode_audio", classmethod(lambda cls, content, suffix: wav_bytes()))
+            track = MusicService.create(owner, "demo.mp3", b"private-compressed-audio")
+            assert track["file_name"] == "demo.mp3"
+            path = MusicService.audio_path_for(owner, str(track["music_id"]))
+            assert path.read_bytes().startswith(b"RIFF")
+    finally:
+        settings.agent_state_root = original_root
+
+
+def test_advanced_note_csv_multitrack_midi_and_musicxml_are_editable():
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        events = root / "notes.csv"
+        events.write_text(
+            "start_time_s,end_time_s,pitch_midi,amplitude\n0.0,0.5,60,0.8\n0.5,1.0,64,0.9\n",
+            encoding="utf-8",
+        )
+        notes = AdvancedMusicService.parse_note_csv(events)
+        assert [note["name"] for note in notes] == ["C4", "E4"]
+        midi = AdvancedMusicService._multitrack_midi({"piano": notes, "guitar": notes}, 120)
+        assert midi.startswith(b"MThd") and midi[8:10] == b"\x00\x01"
+        assert int.from_bytes(midi[10:12], "big") == 3  # tempo + two editable tracks
+        score = root / "score.musicxml"
+        AdvancedMusicService._write_musicxml(score, {"piano": notes}, 120)
+        assert "score-partwise" in score.read_text(encoding="utf-8")
+        assert "เปียโน" in score.read_text(encoding="utf-8")
+
+
+def test_advanced_failure_returns_base_analysis_instead_of_failing(monkeypatch):
+    original = settings.music_advanced_enabled
+    try:
+        settings.music_advanced_enabled = True
+        monkeypatch.setattr(AdvancedMusicService, "_executable", staticmethod(lambda _value: "ffmpeg"))
+        monkeypatch.setattr(AdvancedMusicService, "_separate", classmethod(lambda cls, source, directory: (_ for _ in ()).throw(RuntimeError("model offline"))))
+        analysis = {"limitations": [], "tempo": {"bpm": 120}}
+        with TemporaryDirectory() as directory:
+            result = AdvancedMusicService.enrich(Path(directory) / "audio.wav", analysis, Path(directory))
+        assert result["advanced_music"]["status"] == "fallback"
+        assert result["advanced_music"]["fallback_used"] is True
+    finally:
+        settings.music_advanced_enabled = original

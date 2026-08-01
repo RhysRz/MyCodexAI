@@ -26,9 +26,12 @@ interface MusicJobRow {
   completed_at: number | null;
 }
 
-const ALLOWED_SUFFIXES = [".pdf", ".wav", ".wave"];
+const ALLOWED_SUFFIXES = [".pdf", ".wav", ".wave", ".mp3", ".flac", ".m4a", ".aac", ".ogg"];
 const CALLBACK_STATUSES = new Set(["running", "completed", "failed"]);
-const ARTIFACTS = new Set(["analysis", "midi", "chords", "tab"]);
+const ARTIFACTS = new Set([
+  "analysis", "midi", "chords", "tab", "musicxml", "stem_midi",
+  "stem_vocals", "stem_drums", "stem_bass", "stem_guitar", "stem_piano", "stem_other",
+]);
 const USER_DAILY_LIMIT = 3;
 
 function bearer(request: Request): string {
@@ -85,7 +88,7 @@ async function listJobs(context: RequestContext): Promise<Response> {
   return json({
     jobs,
     processing: "github-runner",
-    supported: ["PDF โน้ตแบบมีข้อความหรือเวกเตอร์", "PDF กีตาร์/Bass TAB ทั้งเวกเตอร์และภาพสแกน", "PDF โน้ตสแกนผ่าน Audiveris OMR", "WAV"],
+    supported: ["PDF โน้ต/TAB/OMR", "WAV, MP3, FLAC, M4A, AAC และ OGG", "แยก stem 6 ชิ้น", "MusicXML และ Multitrack MIDI"],
     scanned_omr: true,
   });
 }
@@ -99,7 +102,7 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
   ).bind(fileId, context.user.id, epochSeconds()).first<{ id: string; name: string; size_bytes: number; status: string }>();
   if (!file || file.status !== "ready") return errorJson("ไม่พบไฟล์ที่พร้อมประมวลผล", 404);
   if (!ALLOWED_SUFFIXES.some((suffix) => file.name.toLocaleLowerCase().endsWith(suffix))) {
-    return errorJson("Music Lab บน Cloud รองรับ PDF และ WAV", 400);
+    return errorJson("Music Lab รองรับ PDF, WAV, MP3, FLAC, M4A, AAC และ OGG", 400);
   }
   if (context.user.role !== "admin") {
     const now = epochSeconds();
@@ -148,13 +151,13 @@ function decodeBase64(value: string): ArrayBuffer {
 
 async function callback(context: RequestContext): Promise<Response> {
   if (!(await runnerAuthorized(context))) return errorJson("Runner secret ไม่ถูกต้อง", 401);
-  const payload = await readJson<MusicCallbackPayload>(context.request, 4_000_000);
+  const payload = await readJson<MusicCallbackPayload>(context.request, 5_500_000);
   const id = String(payload.job_id || "");
   const status = String(payload.status || "");
   if (!CALLBACK_STATUSES.has(status)) return errorJson("สถานะ Music job ไม่ถูกต้อง", 400);
   const job = await context.env.DB.prepare("SELECT * FROM music_jobs WHERE id = ?").bind(id).first<MusicJobRow>();
   if (!job) return errorJson("ไม่พบ Music job", 404);
-  const artifacts = Array.isArray(payload.artifacts) ? payload.artifacts.slice(0, 8) : [];
+  const artifacts = Array.isArray(payload.artifacts) ? payload.artifacts.slice(0, 16) : [];
   let totalBytes = 0;
   const statements: D1PreparedStatement[] = [];
   for (const item of artifacts) {
@@ -202,7 +205,7 @@ export async function handleMusic(context: RequestContext, path: string): Promis
   if (path === "/api/music/jobs" && context.request.method === "GET") return listJobs(context);
   if (path === "/api/music/jobs" && context.request.method === "POST") return dispatchJob(context);
   if (path === "/api/internal/music/callback" && context.request.method === "POST") return callback(context);
-  const match = path.match(/^\/api\/music\/jobs\/([a-f0-9-]+)\/artifacts\/([a-z]+)$/i);
+  const match = path.match(/^\/api\/music\/jobs\/([a-f0-9-]+)\/artifacts\/([a-z0-9_-]+)$/i);
   if (match && context.request.method === "GET") return downloadArtifact(context, match[1], match[2]);
   return null;
 }

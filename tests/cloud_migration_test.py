@@ -153,6 +153,12 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert ".mycodexai-music-runner-started" in workflow
     assert 'os.environ.setdefault("MUSIC_OMR_EXECUTABLE", "")' in runner
     assert 'STARTED_MARKER.write_text("started\\n"' in runner
+    assert '".mp3", ".flac", ".m4a", ".aac", ".ogg"' in music
+    assert '"musicxml", "stem_midi"' in music
+    assert "htdemucs_6s" in workflow
+    assert "basic-pitch==0.4.0" in workflow
+    assert "MUSIC_ADVANCED_ENABLED=true" in workflow
+    assert '"stem_vocals", "stem_drums"' in runner
 
 
 def test_cloud_image_caption_is_composed_outside_the_model() -> None:

@@ -5,9 +5,10 @@ const ui = {
     results: document.querySelector('#music-results'), title: document.querySelector('#music-title'), facts: document.querySelector('#music-facts'),
     chords: document.querySelector('#music-chord-list'), notes: document.querySelector('#music-note-list'), tabPanel: document.querySelector('#music-tab-panel'), tabSummary: document.querySelector('#music-tab-summary'), tabDetails: document.querySelector('#music-tab-details'), parts: document.querySelector('#music-parts'), stems: document.querySelector('#music-stems'),
     midi: document.querySelector('#music-midi'), chordFile: document.querySelector('#music-chords'), tab: document.querySelector('#music-tab'), json: document.querySelector('#music-json'),
+    musicxml: document.querySelector('#music-musicxml'), stemMidi: document.querySelector('#music-stem-midi'), stemMixer: document.querySelector('#music-stem-mixer'), stemRows: document.querySelector('#music-stem-rows'), stemPlay: document.querySelector('#music-stem-play'), stemStop: document.querySelector('#music-stem-stop'),
 };
 
-const state = { tracks: [], current: null, playbackNotes: [], audioContext: null, playbackNodes: [], playbackTimer: null, sampledAudio: null };
+const state = { tracks: [], current: null, playbackNotes: [], audioContext: null, playbackNodes: [], playbackTimer: null, sampledAudio: null, stemAudios: [] };
 
 async function api(url, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -90,16 +91,42 @@ function renderAnalysis(analysis) {
     }
     ui.stems.textContent = analysis.stem_separation?.detail || 'ไม่พบข้อมูลการแยก stem';
     const artifacts = analysis.artifacts || {};
-    for (const [element, href] of [[ui.midi, artifacts.midi], [ui.chordFile, artifacts.chords], [ui.tab, artifacts.tab], [ui.json, artifacts.analysis]]) { element.hidden = !href; element.href = href || '#'; }
+    for (const [element, href] of [[ui.midi, artifacts.midi], [ui.chordFile, artifacts.chords], [ui.tab, artifacts.tab], [ui.json, artifacts.analysis], [ui.musicxml, artifacts.musicxml], [ui.stemMidi, artifacts.stem_midi]]) { element.hidden = !href; element.href = href || '#'; }
+    renderStemMixer(artifacts);
     state.playbackNotes = Array.isArray(analysis.notes) ? analysis.notes : [];
     ui.play.disabled = !state.playbackNotes.length;
     ui.playbackNote.textContent = state.playbackNotes.length ? 'เลือกเครื่องดนตรีแล้วกดเล่น ระบบจะสร้างเสียง sampled จริงในเครื่อง' : 'ไม่พบร่างโน้ตที่นำมาเล่นได้';
     if (Array.isArray(analysis.limitations) && analysis.limitations.length) ui.status.textContent = `วิเคราะห์เสร็จแล้ว · ${analysis.limitations[0]}`;
 }
 
+function stopStems() {
+    for (const audio of state.stemAudios) { audio.pause(); audio.currentTime = 0; }
+}
+
+function renderStemMixer(artifacts) {
+    stopStems(); state.stemAudios = []; ui.stemRows.replaceChildren();
+    const labels = { vocals: 'เสียงร้อง', drums: 'กลอง', bass: 'เบส', guitar: 'กีตาร์', piano: 'เปียโน', other: 'เสียงอื่น' };
+    for (const [stem, label] of Object.entries(labels)) {
+        const url = artifacts[`stem_${stem}`]; if (!url) continue;
+        const audio = new Audio(url); audio.preload = 'none'; state.stemAudios.push(audio);
+        const row = make('div', '', 'stem-row'), slider = document.createElement('input'), mute = make('button', 'ปิดเสียง');
+        slider.type = 'range'; slider.min = '0'; slider.max = '1'; slider.step = '0.05'; slider.value = '1'; slider.setAttribute('aria-label', `ระดับเสียง ${label}`);
+        slider.addEventListener('input', () => { audio.volume = Number(slider.value); });
+        mute.type = 'button'; mute.addEventListener('click', () => { audio.muted = !audio.muted; mute.textContent = audio.muted ? 'เปิดเสียง' : 'ปิดเสียง'; });
+        row.append(make('span', label), slider, mute); ui.stemRows.append(row);
+    }
+    ui.stemMixer.hidden = !state.stemAudios.length;
+}
+
+async function playStems() {
+    stopStems();
+    try { await Promise.all(state.stemAudios.map((audio) => audio.play())); }
+    catch { ui.status.textContent = 'เบราว์เซอร์ยังไม่อนุญาตให้เล่นเสียง โปรดลองกดอีกครั้ง'; }
+}
+
 async function upload() {
     const file = ui.file.files?.[0];
-    if (!file) { ui.status.textContent = 'กรุณาเลือก WAV หรือ PDF ก่อน'; return; }
+    if (!file) { ui.status.textContent = 'กรุณาเลือก PDF หรือไฟล์เสียงก่อน'; return; }
     ui.upload.disabled = true; ui.status.textContent = 'กำลังอัปโหลดเพลงแบบส่วนตัว…';
     try {
         const form = new FormData(); form.append('file', file, file.name);
@@ -248,4 +275,4 @@ async function load() {
     if (state.tracks.length) await selectTrack(state.tracks[0]);
 }
 
-ui.upload.addEventListener('click', upload); ui.analyze.addEventListener('click', analyze); ui.play.addEventListener('click', playNotes); ui.stop.addEventListener('click', stopPlayback); window.addEventListener('pagehide', stopPlayback); load().catch((error) => { ui.status.textContent = error.message; });
+ui.upload.addEventListener('click', upload); ui.analyze.addEventListener('click', analyze); ui.play.addEventListener('click', playNotes); ui.stop.addEventListener('click', stopPlayback); ui.stemPlay.addEventListener('click', playStems); ui.stemStop.addEventListener('click', stopStems); window.addEventListener('pagehide', () => { stopPlayback(); stopStems(); }); load().catch((error) => { ui.status.textContent = error.message; });

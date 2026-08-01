@@ -1,11 +1,4 @@
-"""Private, local-first Music Lab analysis for uncompressed WAV audio.
-
-This intentionally starts with a small DSP engine instead of downloading a large
-source-separation model.  It can estimate timing, harmonic content and a melody
-outline on modest hardware, then exports editable MIDI, chord text and guitar TAB.
-Results are labelled as estimates; a mixture cannot be perfectly separated without
-an additional stem model such as Demucs.
-"""
+"""Private Music Lab with light local DSP and optional cloud-grade stem AI."""
 
 from __future__ import annotations
 
@@ -55,6 +48,14 @@ class MusicService:
         "chords": ("chords.txt", "text/plain; charset=utf-8", "mycodex-chords.txt"),
         "tab": ("guitar-tab.txt", "text/plain; charset=utf-8", "mycodex-guitar-tab.txt"),
         "analysis": ("analysis.json", "application/json", "mycodex-analysis.json"),
+        "musicxml": ("advanced-score.musicxml", "application/vnd.recordare.musicxml+xml", "mycodex-advanced-score.musicxml"),
+        "stem_midi": ("stems.mid", "audio/midi", "mycodex-multitrack-stems.mid"),
+        "stem_vocals": ("preview-vocals.mp3", "audio/mpeg", "mycodex-vocals-preview.mp3"),
+        "stem_drums": ("preview-drums.mp3", "audio/mpeg", "mycodex-drums-preview.mp3"),
+        "stem_bass": ("preview-bass.mp3", "audio/mpeg", "mycodex-bass-preview.mp3"),
+        "stem_guitar": ("preview-guitar.mp3", "audio/mpeg", "mycodex-guitar-preview.mp3"),
+        "stem_piano": ("preview-piano.mp3", "audio/mpeg", "mycodex-piano-preview.mp3"),
+        "stem_other": ("preview-other.mp3", "audio/mpeg", "mycodex-other-preview.mp3"),
     }
     _sampled_instruments = {
         "piano": (0, "Acoustic Grand Piano"),
@@ -71,13 +72,13 @@ class MusicService:
         sample_playback_available = cls._sample_engine_paths() is not None
         return {
             "configured": True,
-            "engine": "MyCodex Local Music DSP + PDF TAB reader/OCR",
-            "supported_formats": ["WAV (PCM)", "PDF chord sheet / vector TAB", "scanned score PDF when OMR is enabled", "MIDI / TXT output"],
-            "separation_available": False,
+            "engine": "MyCodex Music DSP + Advanced Stem/Score pipeline + PDF TAB/OMR",
+            "supported_formats": ["WAV / MP3 / FLAC / M4A / AAC / OGG", "PDF chord sheet / vector TAB", "scanned score PDF when OMR is enabled", "MIDI / MusicXML / TXT output"],
+            "separation_available": bool(settings.music_advanced_enabled),
             "omr_available": omr_available,
             "tab_ocr_available": tab_ocr_available,
             "sample_playback_available": sample_playback_available,
-            "detail": "อ่านคอร์ดจาก PDF และอ่านสาย/เฟรตจาก PDF TAB แบบเวกเตอร์ได้ · OMR สำหรับ PDF สแกน " + ("พร้อมใช้งาน" if omr_available else "ยังไม่ได้ติดตั้งในเครื่อง") + " · เสียง sampled " + ("พร้อมใช้งาน" if sample_playback_available else "ยังไม่พร้อม"),
+            "detail": "Advanced stem AI " + ("เปิดใช้งาน" if settings.music_advanced_enabled else "ปิดไว้เพื่อให้เครื่องเบา") + " · อ่าน PDF/TAB/OMR · OMR " + ("พร้อมใช้งาน" if omr_available else "ยังไม่ได้ติดตั้งในเครื่อง") + " · เสียง sampled " + ("พร้อมใช้งาน" if sample_playback_available else "ยังไม่พร้อม"),
         }
 
     @classmethod
@@ -90,10 +91,11 @@ class MusicService:
         suffix = Path(clean_name).suffix.casefold()
         if suffix == ".pdf":
             return cls._create_pdf_sheet(user, clean_name, content)
-        if suffix not in {".wav", ".wave"}:
-            raise MusicError("รุ่นนี้รองรับไฟล์ WAV (PCM) และ PDF chord sheet")
-
-        duration = cls._validate_wav(content)
+        audio_suffixes = {".wav", ".wave", ".mp3", ".flac", ".m4a", ".aac", ".ogg"}
+        if suffix not in audio_suffixes:
+            raise MusicError("รองรับ WAV, MP3, FLAC, M4A, AAC, OGG และ PDF เท่านั้น")
+        audio_content = content if suffix in {".wav", ".wave"} else cls._transcode_audio(content, suffix)
+        duration = cls._validate_wav(audio_content)
         music_id = uuid4().hex
         directory = cls._track_directory(user.id, music_id)
         metadata = {
@@ -101,12 +103,13 @@ class MusicService:
             "kind": "audio",
             "file_name": clean_name,
             "bytes": len(content),
+            "source_format": suffix.lstrip("."),
             "duration_seconds": round(duration, 3),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         try:
             directory.mkdir(parents=True, exist_ok=False)
-            (directory / "audio.wav").write_bytes(content)
+            (directory / "audio.wav").write_bytes(audio_content)
             cls._write_json(directory / "meta.json", metadata)
             cls._trim_history(user.id)
         except OSError as error:
@@ -171,8 +174,11 @@ class MusicService:
                 else:
                     samples, sample_rate, duration = cls._load_wav(source)
                     analysis = cls._analyze_samples(samples, sample_rate, duration)
+                    if settings.music_advanced_enabled:
+                        from app.services.advanced_music_service import AdvancedMusicService
+                        analysis = AdvancedMusicService.enrich(source, analysis, directory)
                 cls._write_outputs(directory, analysis)
-                analysis["artifacts"] = cls._artifact_urls(music_id)
+                analysis["artifacts"] = cls._artifact_urls(music_id, directory)
                 cls._write_json(directory / "analysis.json", analysis)
         except MusicError:
             raise
@@ -186,7 +192,7 @@ class MusicService:
         analysis = cls._read_json(directory / "analysis.json")
         if not analysis:
             raise MusicError("เพลงนี้ยังไม่ได้วิเคราะห์")
-        analysis["artifacts"] = cls._artifact_urls(music_id)
+        analysis["artifacts"] = cls._artifact_urls(music_id, directory)
         return analysis
 
     @classmethod
@@ -298,6 +304,35 @@ class MusicService:
         if duration > cls._max_duration_seconds:
             raise MusicError("เพลงยาวเกิน 6 นาทีสำหรับการวิเคราะห์บนเครื่องนี้")
         return duration
+
+    @classmethod
+    def _transcode_audio(cls, content: bytes, suffix: str) -> bytes:
+        executable = shutil.which(settings.music_ffmpeg_executable)
+        configured = Path(settings.music_ffmpeg_executable)
+        if configured.is_file():
+            executable = str(configured.resolve())
+        if not executable:
+            raise MusicError("ต้องติดตั้ง FFmpeg ก่อนอัปโหลด MP3/FLAC/M4A/AAC/OGG")
+        try:
+            with tempfile.TemporaryDirectory(prefix="mycodex-music-") as temporary:
+                root = Path(temporary)
+                source = root / f"source{suffix}"
+                target = root / "audio.wav"
+                source.write_bytes(content)
+                completed = subprocess.run([
+                    executable, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+                    "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", str(target),
+                ], capture_output=True, text=True, timeout=180, check=False)
+                if completed.returncode != 0 or not target.is_file():
+                    raise MusicError("FFmpeg ไม่สามารถอ่านไฟล์เสียงนี้ได้")
+                converted = target.read_bytes()
+        except subprocess.TimeoutExpired as error:
+            raise MusicError("แปลงไฟล์เสียงนานเกินกำหนด") from error
+        except OSError as error:
+            raise MusicError("ไม่สามารถแปลงไฟล์เสียงนี้ได้") from error
+        if len(converted) > cls._max_upload_bytes:
+            raise MusicError("ไฟล์เสียงหลังแปลงเป็น WAV มีขนาดเกิน 80 MB")
+        return converted
 
     @classmethod
     def _validate_pdf(cls, content: bytes) -> tuple[int, str]:
@@ -1211,8 +1246,12 @@ class MusicService:
         return bytes(reversed(encoded))
 
     @classmethod
-    def _artifact_urls(cls, music_id: str) -> dict[str, str]:
-        return {name: f"/api/music/{music_id}/downloads/{name}" for name in cls._artifact_names}
+    def _artifact_urls(cls, music_id: str, directory: Path | None = None) -> dict[str, str]:
+        return {
+            name: f"/api/music/{music_id}/downloads/{name}"
+            for name, (file_name, _media_type, _download_name) in cls._artifact_names.items()
+            if name == "analysis" or directory is None or (directory / file_name).is_file()
+        }
 
     @classmethod
     def _track_response(cls, metadata: dict[str, Any], analyzed: bool = False) -> dict[str, object]:

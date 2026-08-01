@@ -1,0 +1,26 @@
+.stem-mixer {
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid #3f4650;
+    border-radius: 11px;
+    background: #121317;
+}
+.stem-mixer h3 { margin: 0; }
+.stem-row {
+    display: grid;
+    grid-template-columns: 90px minmax(100px, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+}
+.stem-row input { accent-color: #d9f99d; }
+.stem-row button {
+    border: 1px solid #596070;
+    border-radius: 7px;
+    padding: 6px 8px;
+    background: #292c33;
+    color: #f5f7fa;
+}
+@media (max-width: 520px) {
+    .stem-row { grid-template-columns: 70px minmax(70px, 1fr) auto; gap: 6px; }
+}

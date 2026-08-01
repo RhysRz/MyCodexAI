@@ -1,0 +1,2 @@
+# Installed only by the disposable GitHub Music runner, never by normal startup.
+demucs==4.1.0

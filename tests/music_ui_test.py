@@ -12,6 +12,10 @@ def test_music_lab_exposes_upload_analysis_and_editable_exports():
     assert 'id="music-tab"' in page
     assert 'id="music-instrument"' in page
     assert 'application/pdf' in page
+    assert 'id="music-musicxml"' in page
+    assert 'id="music-stem-midi"' in page
+    assert 'id="music-stem-mixer"' in page
+    assert '.mp3' in page and '.flac' in page and '.m4a' in page
     assert "/api/music/tracks" in script
     assert "/analyze" in script
     assert "playNotes" in script
@@ -20,3 +24,5 @@ def test_music_lab_exposes_upload_analysis_and_editable_exports():
     assert "createBufferSource" in script
     assert "/sampled-audio" in script
     assert "new Audio" in script
+    assert "renderStemMixer" in script
+    assert "playStems" in script

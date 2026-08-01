@@ -90,12 +90,12 @@
     <section id="view-music" class="view">
       <div class="panel narrow">
         <p class="eyebrow">MUSIC LAB</p><h1>แกะเพลง, PDF, TAB และ OMR</h1>
-        <p class="muted">เลือกไฟล์ PDF หรือ WAV ที่อัปโหลดไว้ งานจะประมวลผลบน GitHub Runner จึงไม่ใช้ CPU/RAM ของคอมคุณ</p>
+        <p class="muted">เลือก PDF หรือไฟล์เสียงที่อัปโหลดไว้ งานหนักจะประมวลผลบน GitHub Runner จึงไม่ใช้ CPU/RAM ของคอมคุณ</p>
         <form id="music-form">
-          <label>ไฟล์ต้นฉบับ<select id="music-file" required><option value="">เลือกไฟล์ PDF หรือ WAV</option></select></label>
+          <label>ไฟล์ต้นฉบับ<select id="music-file" required><option value="">เลือก PDF หรือไฟล์เสียง</option></select></label>
           <button id="start-music" class="primary" type="submit">เริ่มวิเคราะห์</button>
         </form>
-        <div class="capability-note"><strong>ความสามารถปัจจุบัน</strong><p>อ่านคอร์ดและ PDF โน้ตแบบเวกเตอร์, อ่านสาย/เฟรตจาก PDF TAB ทั้งเวกเตอร์และภาพสแกน, อ่าน PDF โน้ตสแกนด้วย Audiveris OMR, วิเคราะห์ WAV และส่งออก Analysis, MIDI, คอร์ด และ TAB</p></div>
+        <div class="capability-note"><strong>Advanced Music Lab</strong><p>รองรับ WAV, MP3, FLAC, M4A, AAC, OGG และ PDF · แยกเสียงร้อง/กลอง/เบส/กีตาร์/เปียโน/เสียงอื่น · ถอดโน้ตแยกเครื่อง · ส่งออก MusicXML, Multitrack MIDI, คอร์ด และ TAB · อ่าน PDF สแกนด้วย OMR</p></div>
       </div>
       <div class="panel"><div class="section-title"><h2>งาน Music Lab</h2><button id="refresh-music" class="secondary">โหลดใหม่</button></div><div id="music-list" class="card-list"></div></div>
     </section>

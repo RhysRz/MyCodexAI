@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     # Render only when this much memory is free.  Unlike chat backpressure, an
     # audio render fails safely rather than competing with a resident LLM.
     music_render_min_available_mb: int = Field(default=2048, ge=512, le=65_536)
+    # Advanced analysis is opt-in because Demucs and Basic Pitch are sizeable.
+    # Cloud runners enable it explicitly; ordinary local startup stays light.
+    music_advanced_enabled: bool = False
+    music_ffmpeg_executable: str = "ffmpeg"
+    music_demucs_model: str = "htdemucs_6s"
+    music_demucs_timeout_seconds: int = Field(default=1800, ge=120, le=3600)
+    music_basic_pitch_executable: str = ""
+    music_basic_pitch_timeout_seconds: int = Field(default=900, ge=60, le=1800)
+    music_stem_preview_seconds: int = Field(default=20, ge=5, le=45)
     # These controls change scheduling and resource use only; they do not change
     # the model, sampling parameters, prompt context, or answer quality.
     ollama_inference_threads: int = Field(default=2, ge=1, le=64)

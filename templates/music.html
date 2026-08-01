@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#111214">
     <title>MyCodexAI · Music Lab</title>
-    <link rel="stylesheet" href="/static/music.css?v=music-v6">
+    <link rel="stylesheet" href="/static/music.css?v=music-v7">
+    <link rel="stylesheet" href="/static/music-advanced.css?v=music-v1">
 </head>
 <body>
     <header class="music-header">
@@ -14,13 +15,13 @@
     </header>
     <main class="music-main">
         <section class="music-panel upload-panel">
-            <p class="eyebrow">MUSIC LAB · BETA</p>
+            <p class="eyebrow">ADVANCED MUSIC LAB</p>
             <h1>แกะเพลงด้วย MyCodex</h1>
             <p id="music-status" class="muted">กำลังตรวจสอบ Music Lab…</p>
             <label class="file-drop" for="music-file">
-                <strong>เลือกเพลง WAV หรือ PDF โน้ต/Chord sheet/TAB</strong>
-                <span>WAV PCM ไม่เกิน 80 MB / PDF ไม่เกิน 20 MB · PDF สแกนใช้ OMR เมื่อผู้ดูแลตั้งค่าไว้</span>
-                <input id="music-file" type="file" accept="audio/wav,.wav,.wave,application/pdf,.pdf">
+                <strong>เลือก WAV, MP3, FLAC, M4A, AAC, OGG หรือ PDF โน้ต/TAB</strong>
+                <span>ไฟล์เสียงไม่เกิน 80 MB / PDF ไม่เกิน 20 MB · โหมด Advanced แยก stem และสร้างโน้ตแก้ไขต่อได้</span>
+                <input id="music-file" type="file" accept="audio/*,.wav,.wave,.mp3,.flac,.m4a,.aac,.ogg,application/pdf,.pdf">
             </label>
             <div class="actions"><button id="music-upload" type="button">อัปโหลด</button><button id="music-analyze" type="button" disabled>วิเคราะห์เพลง / โน้ต</button><a id="music-source" class="button-link" href="#" target="_blank" hidden>เปิดไฟล์ต้นฉบับ</a></div>
             <p class="muted warning">ผลคอร์ด โน้ต และแท็บเป็นการประมาณจากเพลงมิกซ์รวม ควรฟังตรวจทานก่อนเล่น บันทึก หรือเผยแพร่</p>
@@ -42,7 +43,10 @@
                     <a id="music-chords" class="button-link" href="#" download hidden>ดาวน์โหลดคอร์ด</a>
                     <a id="music-tab" class="button-link" href="#" download hidden>ดาวน์โหลด Guitar TAB</a>
                     <a id="music-json" class="button-link" href="#" download hidden>ดาวน์โหลดรายงาน JSON</a>
+                    <a id="music-musicxml" class="button-link" href="#" download hidden>ดาวน์โหลด MusicXML</a>
+                    <a id="music-stem-midi" class="button-link" href="#" download hidden>ดาวน์โหลด Multitrack MIDI</a>
                 </div>
+                <section id="music-stem-mixer" class="stem-mixer" hidden><h3>Stem preview mixer</h3><p class="muted">ฟังและปรับระดับเสียงแต่ละชิ้น</p><div id="music-stem-rows"></div><div class="actions"><button id="music-stem-play" type="button">▶ เล่นพร้อมกัน</button><button id="music-stem-stop" type="button">■ หยุด</button></div></section>
                 <div class="playback-controls">
                     <label for="music-instrument">ฟังร่างโน้ตด้วยเครื่องดนตรี</label>
                     <select id="music-instrument"><option value="piano">เปียโนอะคูสติก</option><option value="guitar">กีตาร์โปร่งดีดสาย</option><option value="bass">เบสไฟฟ้า</option><option value="strings">สตริงเอนเซมเบิล</option><option value="flute">ฟลุต</option></select>
@@ -59,6 +63,6 @@
             </div>
         </section>
     </main>
-    <script src="/static/music.js?v=music-v6"></script>
+    <script src="/static/music.js?v=music-v7"></script>
 </body>
 </html>

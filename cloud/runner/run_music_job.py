@@ -35,6 +35,8 @@ os.environ.setdefault("OLLAMA_API_KEY", "unused")
 os.environ["AGENT_STATE_ROOT"] = str(STATE_ROOT)
 os.environ.setdefault("MUSIC_OMR_EXECUTABLE", "")
 os.environ.setdefault("MUSIC_TAB_OCR_EXECUTABLE", "")
+os.environ.setdefault("MUSIC_ADVANCED_ENABLED", "false")
+os.environ.setdefault("MUSIC_FFMPEG_EXECUTABLE", "ffmpeg")
 
 from app.services.music_service import MusicService  # noqa: E402
 
@@ -83,7 +85,10 @@ def download_source() -> bytes:
 
 def encoded_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, str]]:
     output: list[dict[str, str]] = []
-    for kind in ("analysis", "midi", "chords", "tab"):
+    for kind in (
+        "analysis", "midi", "chords", "tab", "musicxml", "stem_midi",
+        "stem_vocals", "stem_drums", "stem_bass", "stem_guitar", "stem_piano", "stem_other",
+    ):
         try:
             path, media_type, file_name = MusicService.artifact_for(user, music_id, kind)
         except Exception:

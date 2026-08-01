@@ -202,8 +202,8 @@ async function loadFiles() {
   });
   const musicSelect = $("#music-file");
   const selectedMusic = musicSelect.value;
-  musicSelect.replaceChildren(new Option("เลือกไฟล์ PDF หรือ WAV", ""));
-  ready.filter((file) => /\.(pdf|wav|wave)$/i.test(file.name)).forEach((file) => musicSelect.append(new Option(file.name, file.id)));
+  musicSelect.replaceChildren(new Option("เลือก PDF หรือไฟล์เสียง", ""));
+  ready.filter((file) => /\.(pdf|wav|wave|mp3|flac|m4a|aac|ogg)$/i.test(file.name)).forEach((file) => musicSelect.append(new Option(file.name, file.id)));
   if ([...musicSelect.options].some((option) => option.value === selectedMusic)) musicSelect.value = selectedMusic;
 }
 
@@ -326,8 +326,10 @@ async function loadImageStatus() {
 function compactMusicSummary(analysis) {
   if (!analysis || typeof analysis !== "object") return "ประมวลผลเสร็จแล้ว";
   const parts = [];
-  if (analysis.tempo_bpm || analysis.bpm) parts.push(`Tempo ${Math.round(analysis.tempo_bpm || analysis.bpm)} BPM`);
-  if (analysis.key) parts.push(`คีย์ ${analysis.key}`);
+  const bpm = analysis.tempo?.bpm || analysis.tempo_bpm || analysis.bpm;
+  const key = analysis.key?.name || analysis.key;
+  if (bpm) parts.push(`Tempo ${Math.round(bpm)} BPM`);
+  if (key) parts.push(`คีย์ ${key}`);
   if (Array.isArray(analysis.chords) && analysis.chords.length) {
     const chords = analysis.chords.slice(0, 8).map((item) => typeof item === "string" ? item : item.chord || item.name).filter(Boolean);
     if (chords.length) parts.push(`คอร์ด ${chords.join(" · ")}`);
@@ -335,7 +337,36 @@ function compactMusicSummary(analysis) {
   if (Array.isArray(analysis.detected_parts) && analysis.detected_parts.length) {
     parts.push(`เครื่องดนตรี ${analysis.detected_parts.slice(0, 5).map((item) => item.name || item).join(" · ")}`);
   }
+  if (analysis.advanced_music?.status === "completed") parts.push("Advanced AI: แยก stem และถอดโน้ตสำเร็จ");
+  if (analysis.advanced_music?.status === "fallback") parts.push("Advanced AI ใช้ fallback · ผลพื้นฐานยังพร้อมใช้");
   return parts.join("\n") || "ประมวลผลเสร็จแล้ว พร้อมดาวน์โหลดผลลัพธ์";
+}
+
+function stemMixer(job, artifacts) {
+  const labels = { vocals: "เสียงร้อง", drums: "กลอง", bass: "เบส", guitar: "กีตาร์", piano: "เปียโน", other: "เสียงอื่น" };
+  const stems = Object.entries(labels).map(([stem, label]) => ({ stem, label, artifact: artifacts.get(`stem_${stem}`) })).filter((item) => item.artifact);
+  if (!stems.length) return null;
+  const mixer = element("section", "stem-mixer");
+  mixer.append(element("strong", "", "มิกเซอร์ Stem · พรีวิวซิงก์กัน"), element("p", "muted", `พรีวิว ${job.analysis?.stem_separation?.preview_seconds || 20} วินาที · ปรับระดับเสียงแต่ละชิ้นได้`));
+  const players = [];
+  stems.forEach(({ stem, label, artifact }) => {
+    const row = element("div", "stem-row");
+    const audio = new Audio(artifact.url); audio.preload = "none";
+    const volume = document.createElement("input"); volume.type = "range"; volume.min = "0"; volume.max = "1"; volume.step = "0.05"; volume.value = "1"; volume.setAttribute("aria-label", `ระดับเสียง ${label}`);
+    volume.addEventListener("input", () => { audio.volume = Number(volume.value); });
+    const mute = element("button", "secondary", "ปิดเสียง");
+    mute.type = "button"; mute.addEventListener("click", () => { audio.muted = !audio.muted; mute.textContent = audio.muted ? "เปิดเสียง" : "ปิดเสียง"; });
+    row.append(element("span", "stem-label", label), volume, mute); mixer.append(row); players.push(audio);
+  });
+  const controls = element("div", "item-actions");
+  const play = element("button", "primary", "▶ เล่นพร้อมกัน"); play.type = "button";
+  const stop = element("button", "secondary", "■ หยุด"); stop.type = "button";
+  play.addEventListener("click", async () => {
+    players.forEach((audio) => { audio.currentTime = 0; });
+    try { await Promise.all(players.map((audio) => audio.play())); } catch { toast("เบราว์เซอร์ยังไม่อนุญาตให้เล่นเสียง โปรดลองกดอีกครั้ง"); }
+  });
+  stop.addEventListener("click", () => players.forEach((audio) => { audio.pause(); audio.currentTime = 0; }));
+  controls.append(play, stop); mixer.append(controls); return mixer;
 }
 
 async function loadMusicJobs() {
@@ -350,11 +381,12 @@ async function loadMusicJobs() {
     if (job.analysis) card.append(element("p", "music-summary", compactMusicSummary(job.analysis)));
     if (job.error_detail) card.append(element("p", "error", job.error_detail));
     const actions = element("div", "item-actions");
-    (job.artifacts || []).forEach((artifact) => {
+    const artifacts = new Map((job.artifacts || []).map((artifact) => [artifact.kind, artifact]));
+    (job.artifacts || []).filter((artifact) => !artifact.kind.startsWith("stem_") || artifact.kind === "stem_midi").forEach((artifact) => {
       const link = element("a", "secondary", `ดาวน์โหลด ${artifact.kind.toUpperCase()}`);
       link.href = artifact.url; link.download = artifact.file_name; actions.append(link);
     });
-    card.append(actions); list.append(card);
+    card.append(actions); const mixer = stemMixer(job, artifacts); if (mixer) card.append(mixer); list.append(card);
   });
   clearTimeout(musicTimer);
   if (active) musicTimer = setTimeout(() => loadMusicJobs().catch(() => {}), 8_000);
