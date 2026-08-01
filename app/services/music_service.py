@@ -71,7 +71,7 @@ class MusicService:
         sample_playback_available = cls._sample_engine_paths() is not None
         return {
             "configured": True,
-            "engine": "MyCodex Local Music DSP + PDF vector TAB reader",
+            "engine": "MyCodex Local Music DSP + PDF TAB reader/OCR",
             "supported_formats": ["WAV (PCM)", "PDF chord sheet / vector TAB", "scanned score PDF when OMR is enabled", "MIDI / TXT output"],
             "separation_available": False,
             "omr_available": omr_available,
@@ -445,14 +445,14 @@ class MusicService:
             page.extract_text(visitor_text=visitor)
             systems.extend(cls._tab_systems_from_glyphs(glyphs))
 
-        return cls._tablature_from_systems(systems, bpm)
+        return cls._tablature_from_systems(systems, bpm, source="vector")
 
     @classmethod
     def _extract_raster_tablature(cls, reader: PdfReader, bpm: float) -> dict[str, Any]:
         """Read string rows and OCR fret numbers from image-only TAB pages."""
         executable = cls._tab_ocr_executable()
         if not executable:
-            return cls._tablature_from_systems([], bpm)
+            return cls._tablature_from_systems([], bpm, source="scan_ocr")
         systems: list[tuple[list[float], list[dict[str, Any]]]] = []
         with tempfile.TemporaryDirectory(prefix="mycodex-tab-ocr-") as temporary:
             for page_index, page in enumerate(reader.pages[:80]):
@@ -478,7 +478,7 @@ class MusicService:
                     items = [item for item in glyphs if min(abs(float(item["y"]) - row) for row in rows) <= tolerance]
                     if len(items) >= 4:
                         systems.append((rows, items))
-        return cls._tablature_from_systems(systems, bpm)
+        return cls._tablature_from_systems(systems, bpm, source="scan_ocr")
 
     @staticmethod
     def _tab_rows_from_image(image: Image.Image) -> tuple[list[list[float]], np.ndarray]:
@@ -564,9 +564,15 @@ class MusicService:
         return glyphs
 
     @classmethod
-    def _tablature_from_systems(cls, systems: list[tuple[list[float], list[dict[str, Any]]]], bpm: float) -> dict[str, Any]:
+    def _tablature_from_systems(
+        cls,
+        systems: list[tuple[list[float], list[dict[str, Any]]]],
+        bpm: float,
+        *,
+        source: str = "vector",
+    ) -> dict[str, Any]:
         if not systems:
-            return {"instrument": "Unknown", "tuning": [], "notes": [], "events": [], "string_count": 0}
+            return {"instrument": "Unknown", "tuning": [], "notes": [], "events": [], "string_count": 0, "source": source}
         common_count = max((len(rows) for rows, _items in systems), key=lambda count: sum(len(rows) == count for rows, _ in systems))
         tuning = cls._tab_tuning(common_count)
         if not tuning:
@@ -607,6 +613,7 @@ class MusicService:
             "notes": sorted(notes, key=lambda note: (float(note["start"]), str(note["string"]))),
             "events": sorted(events, key=lambda event: (float(event["start"]), str(event["string"]))),
             "string_count": common_count,
+            "source": source,
         }
 
     @staticmethod
@@ -848,12 +855,13 @@ class MusicService:
     @classmethod
     def _analysis_from_tablature(cls, tablature: dict[str, Any], bpm: float, pages: int, tempo_found: bool) -> dict[str, Any]:
         notes = tablature["notes"]
+        scanned = tablature.get("source") == "scan_ocr"
         duration = max((float(note["start"]) + float(note["duration"]) for note in notes), default=0.0)
         pitch_profile = np.zeros(12, dtype=np.float64)
         for note in notes:
             pitch_profile[int(note["midi"]) % 12] += 1
         return {
-            "engine": "MyCodex PDF vector TAB reader",
+            "engine": "MyCodex PDF scanned TAB OCR" if scanned else "MyCodex PDF vector TAB reader",
             "limitations": [
                 "อ่านตัวเลข fret และตำแหน่งสายจาก PDF TAB แบบเวกเตอร์; เทคนิคสไลด์/ฮัมเมอร์/จังหวะละเอียดอาจต้องตรวจทาน",
                 "PDF สแกนเป็นรูปและโน้ตห้าเส้นที่ไม่มี TAB ยังต้องใช้ OMR engine เพิ่ม",
@@ -865,7 +873,11 @@ class MusicService:
             "chords": [],
             "notes": notes,
             "tablature": {key: value for key, value in tablature.items() if key != "notes"},
-            "detected_parts": [{"name": str(tablature["instrument"]), "confidence": "exact string/fret read", "detail": "อ่านสายและเฟรตจาก PDF TAB โดยตรง"}],
+            "detected_parts": [{
+                "name": str(tablature["instrument"]),
+                "confidence": "OCR string/fret estimate" if scanned else "exact string/fret read",
+                "detail": "ตรวจเส้นสายและอ่านเลขเฟรตจากภาพ TAB ด้วย OCR" if scanned else "อ่านสายและเฟรตจาก PDF TAB โดยตรง",
+            }],
             "stem_separation": {"available": False, "detail": "PDF TAB ไม่มีไฟล์เสียงต้นฉบับสำหรับแยก stem"},
         }
 

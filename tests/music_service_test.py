@@ -140,9 +140,11 @@ def test_raster_tab_reader_detects_six_strings_and_keeps_frets(monkeypatch):
     tablature = MusicService._extract_raster_tablature(_RasterTabReader(image), 120)
     assert tablature["instrument"] == "6-string guitar"
     assert tablature["string_count"] == 6
+    assert tablature["source"] == "scan_ocr"
     assert [(note["string"], note["fret"]) for note in tablature["notes"]] == [
         ("e", 3), ("B", 0), ("G", 0), ("D", 0), ("A", 2), ("E", 3),
     ]
+    assert MusicService._analysis_from_tablature(tablature, 120, 1, False)["engine"] == "MyCodex PDF scanned TAB OCR"
 
 
 def test_musicxml_omr_output_becomes_editable_notes():
