@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # scanned notation PDF and never for normal audio or vector TAB files.
     music_omr_executable: str = ""
     music_omr_timeout_seconds: int = Field(default=300, ge=30, le=900)
+    # Optional trusted OCR executable for image-only guitar/bass TAB.  The
+    # score controls only image input; it never controls the executable path.
+    music_tab_ocr_executable: str = ""
+    music_tab_ocr_timeout_seconds: int = Field(default=60, ge=10, le=300)
     # Sample-based playback is rendered only on a user click.  The SoundFont
     # remains local, so remote/mobile clients do not depend on a third party.
     music_fluidsynth_executable: str = "tools/fluidsynth-2.5.7/fluidsynth-v2.5.7-win10-x64-cpp11/bin/fluidsynth.exe"

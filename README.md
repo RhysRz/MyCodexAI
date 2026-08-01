@@ -242,6 +242,9 @@ BROWSER_QA_TIMEOUT_SECONDS=45
 # Example after installing the local Audiveris app:
 # MUSIC_OMR_EXECUTABLE=C:\\Program Files\\Audiveris\\bin\\Audiveris.exe
 # MUSIC_OMR_TIMEOUT_SECONDS=300
+# Optional raster guitar/bass TAB OCR. Use a trusted Tesseract executable.
+# MUSIC_TAB_OCR_EXECUTABLE=C:\\Program Files\\Tesseract-OCR\\tesseract.exe
+# MUSIC_TAB_OCR_TIMEOUT_SECONDS=60
 SANDBOX_MODE=host
 SANDBOX_DOCKER_IMAGE=mycodexai-sandbox:latest
 SANDBOX_ALLOW_NETWORK=false
@@ -257,11 +260,16 @@ During local HTTP development (`DEBUG=true`), secure cookies are automatically r
 ### Music Lab: score OMR and guitar TAB
 
 Music Lab reads selectable-text chord sheets and vector guitar/bass TAB directly.
+When `MUSIC_TAB_OCR_EXECUTABLE` points to Tesseract, it also detects four- or
+six-string systems in image-only TAB, removes the staff lines for OCR, and keeps
+the recognized source string and fret in the exported analysis and MIDI.
 For a scanned PDF or a five-line staff image, install a local OMR application such
 as Audiveris, set `MUSIC_OMR_EXECUTABLE` to its executable, and restart MyCodexAI.
 The OMR process is called only when a score PDF has no readable chord text or
 vector TAB; uploaded files can never choose the executable or command.  The result
 is converted from MusicXML to editable MIDI, analysis JSON, and a note preview.
+The GitHub-hosted Cloud Music Runner configures both Audiveris and Tesseract for
+these two distinct scan types without loading either engine on the user's PC.
 
 Music Lab also includes a local sample-playback engine (FluidSynth plus GeneralUser
 GS) for the selectable Piano, Guitar, Bass, Strings, and Flute preview. It renders

@@ -41,6 +41,7 @@ async function overview(context: RequestContext): Promise<Response> {
       },
       { id: "music", label: "Music Lab สำหรับ PDF, TAB และ WAV", state: "cloud-runner" },
       { id: "scanned_omr", label: "OMR สำหรับ PDF สแกน", state: "cloud-runner" },
+      { id: "scanned_tab_ocr", label: "OCR สายและเฟรตจาก TAB สแกน", state: "cloud-runner" },
       { id: "terminal", label: "Safe Terminal และ Docker sandbox", state: "remote-worker-required" },
       { id: "ollama", label: "Ollama บนเครื่อง", state: "remote-worker-required" },
     ],

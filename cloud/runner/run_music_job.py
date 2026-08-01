@@ -34,6 +34,7 @@ os.environ.setdefault("OLLAMA_MODEL", "unused")
 os.environ.setdefault("OLLAMA_API_KEY", "unused")
 os.environ["AGENT_STATE_ROOT"] = str(STATE_ROOT)
 os.environ.setdefault("MUSIC_OMR_EXECUTABLE", "")
+os.environ.setdefault("MUSIC_TAB_OCR_EXECUTABLE", "")
 
 from app.services.music_service import MusicService  # noqa: E402
 

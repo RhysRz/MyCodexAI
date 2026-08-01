@@ -80,6 +80,12 @@ jobs:
           test -x "$audiveris_executable"
           echo "MUSIC_OMR_EXECUTABLE=$audiveris_executable" >> "$GITHUB_ENV"
           "$audiveris_executable" -version
+          if ! command -v tesseract >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends tesseract-ocr
+          fi
+          echo "MUSIC_TAB_OCR_EXECUTABLE=$(command -v tesseract)" >> "$GITHUB_ENV"
+          tesseract --version | head -n 1
 
       - name: Analyze one private music file
         run: python cloud/runner/run_music_job.py

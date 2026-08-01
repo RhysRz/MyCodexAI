@@ -85,7 +85,7 @@ async function listJobs(context: RequestContext): Promise<Response> {
   return json({
     jobs,
     processing: "github-runner",
-    supported: ["PDF โน้ตแบบมีข้อความหรือเวกเตอร์", "PDF กีตาร์ TAB", "PDF โน้ตสแกนผ่าน Audiveris OMR", "WAV"],
+    supported: ["PDF โน้ตแบบมีข้อความหรือเวกเตอร์", "PDF กีตาร์/Bass TAB ทั้งเวกเตอร์และภาพสแกน", "PDF โน้ตสแกนผ่าน Audiveris OMR", "WAV"],
     scanned_omr: true,
   });
 }

@@ -9,6 +9,7 @@ an additional stem model such as Demucs.
 
 from __future__ import annotations
 
+import csv
 from datetime import datetime, timezone
 from io import BytesIO
 import hashlib
@@ -18,6 +19,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 from threading import BoundedSemaphore
 from typing import Any, TYPE_CHECKING
 from uuid import uuid4
@@ -26,6 +28,7 @@ import xml.etree.ElementTree as ElementTree
 import zipfile
 
 import numpy as np
+from PIL import Image
 from pypdf import PdfReader
 
 from app.core.settings import settings
@@ -64,6 +67,7 @@ class MusicService:
     @classmethod
     def status(cls) -> dict[str, object]:
         omr_available = bool(cls._omr_executable())
+        tab_ocr_available = bool(cls._tab_ocr_executable())
         sample_playback_available = cls._sample_engine_paths() is not None
         return {
             "configured": True,
@@ -71,6 +75,7 @@ class MusicService:
             "supported_formats": ["WAV (PCM)", "PDF chord sheet / vector TAB", "scanned score PDF when OMR is enabled", "MIDI / TXT output"],
             "separation_available": False,
             "omr_available": omr_available,
+            "tab_ocr_available": tab_ocr_available,
             "sample_playback_available": sample_playback_available,
             "detail": "อ่านคอร์ดจาก PDF และอ่านสาย/เฟรตจาก PDF TAB แบบเวกเตอร์ได้ · OMR สำหรับ PDF สแกน " + ("พร้อมใช้งาน" if omr_available else "ยังไม่ได้ติดตั้งในเครื่อง") + " · เสียง sampled " + ("พร้อมใช้งาน" if sample_playback_available else "ยังไม่พร้อม"),
         }
@@ -383,6 +388,9 @@ class MusicService:
         tablature = cls._extract_vector_tablature(reader, bpm)
         if tablature["notes"]:
             return cls._analysis_from_tablature(tablature, bpm, len(reader.pages), bool(bpm_match))
+        raster_tablature = cls._extract_raster_tablature(reader, bpm)
+        if raster_tablature["notes"]:
+            return cls._analysis_from_tablature(raster_tablature, bpm, len(reader.pages), bool(bpm_match))
 
         chords = cls._chords_from_text(text)
         if not chords:
@@ -437,6 +445,126 @@ class MusicService:
             page.extract_text(visitor_text=visitor)
             systems.extend(cls._tab_systems_from_glyphs(glyphs))
 
+        return cls._tablature_from_systems(systems, bpm)
+
+    @classmethod
+    def _extract_raster_tablature(cls, reader: PdfReader, bpm: float) -> dict[str, Any]:
+        """Read string rows and OCR fret numbers from image-only TAB pages."""
+        executable = cls._tab_ocr_executable()
+        if not executable:
+            return cls._tablature_from_systems([], bpm)
+        systems: list[tuple[list[float], list[dict[str, Any]]]] = []
+        with tempfile.TemporaryDirectory(prefix="mycodex-tab-ocr-") as temporary:
+            for page_index, page in enumerate(reader.pages[:80]):
+                try:
+                    images = [item.image for item in page.images]
+                except Exception:
+                    continue
+                if not images:
+                    continue
+                image = max(images, key=lambda item: int(item.width) * int(item.height)).convert("L")
+                row_groups, grayscale = cls._tab_rows_from_image(image)
+                if not row_groups:
+                    continue
+                glyphs = cls._ocr_raster_tab_glyphs(
+                    grayscale,
+                    row_groups,
+                    executable,
+                    Path(temporary) / f"page-{page_index}.png",
+                )
+                for rows in row_groups:
+                    gap = float(np.median(np.diff(rows))) if len(rows) > 1 else 20.0
+                    tolerance = max(7.0, gap * 0.48)
+                    items = [item for item in glyphs if min(abs(float(item["y"]) - row) for row in rows) <= tolerance]
+                    if len(items) >= 4:
+                        systems.append((rows, items))
+        return cls._tablature_from_systems(systems, bpm)
+
+    @staticmethod
+    def _tab_rows_from_image(image: Image.Image) -> tuple[list[list[float]], np.ndarray]:
+        grayscale = np.asarray(image.convert("L"), dtype=np.uint8)
+        if grayscale.ndim != 2 or grayscale.shape[0] < 100 or grayscale.shape[1] < 100:
+            return [], grayscale
+        dark = grayscale < 170
+        minimum_ink = max(80, int(grayscale.shape[1] * 0.25))
+        candidates = np.flatnonzero(np.count_nonzero(dark, axis=1) >= minimum_ink)
+        centers: list[float] = []
+        group: list[int] = []
+        for value in candidates.tolist():
+            if group and value > group[-1] + 1:
+                centers.append(float(np.mean(group)))
+                group = []
+            group.append(value)
+        if group:
+            centers.append(float(np.mean(group)))
+
+        systems: list[list[float]] = []
+        index = 0
+        while index < len(centers):
+            matched: list[float] | None = None
+            for count in (6, 4):
+                rows = centers[index:index + count]
+                if len(rows) != count:
+                    continue
+                gaps = np.diff(rows)
+                median = float(np.median(gaps))
+                if 6.0 <= median <= 90.0 and float(np.max(np.abs(gaps - median))) <= max(2.5, median * 0.22):
+                    matched = rows
+                    break
+            if matched:
+                systems.append(matched)
+                index += len(matched)
+            else:
+                index += 1
+        return systems, grayscale
+
+    @staticmethod
+    def _ocr_raster_tab_glyphs(
+        grayscale: np.ndarray,
+        row_groups: list[list[float]],
+        executable: str,
+        image_path: Path,
+    ) -> list[dict[str, Any]]:
+        prepared = np.where(grayscale < 190, 0, 255).astype(np.uint8)
+        for row in (value for rows in row_groups for value in rows):
+            center = int(round(row))
+            prepared[max(0, center - 1):min(prepared.shape[0], center + 2), :] = 255
+        Image.fromarray(prepared, mode="L").save(image_path, format="PNG")
+        try:
+            completed = subprocess.run(
+                [executable, str(image_path), "stdout", "--psm", "11", "-c", "tessedit_char_whitelist=0123456789xX", "tsv"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=settings.music_tab_ocr_timeout_seconds,
+                check=False,
+                shell=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if completed.returncode != 0:
+            return []
+        glyphs: list[dict[str, Any]] = []
+        for row in csv.DictReader(completed.stdout.splitlines(), delimiter="\t"):
+            token = str(row.get("text") or "").strip()
+            try:
+                confidence = float(row.get("conf") or -1)
+                left = float(row.get("left") or 0)
+                top = float(row.get("top") or 0)
+                width = float(row.get("width") or 0)
+                height = float(row.get("height") or 0)
+            except (TypeError, ValueError):
+                continue
+            if confidence < 20 or not re.fullmatch(r"(?:\d{1,2}|[xX])", token):
+                continue
+            glyphs.append({"token": token, "x": left + width / 2.0, "y": top + height / 2.0})
+        return glyphs
+
+    @classmethod
+    def _tablature_from_systems(cls, systems: list[tuple[list[float], list[dict[str, Any]]]], bpm: float) -> dict[str, Any]:
         if not systems:
             return {"instrument": "Unknown", "tuning": [], "notes": [], "events": [], "string_count": 0}
         common_count = max((len(rows) for rows, _items in systems), key=lambda count: sum(len(rows) == count for rows, _ in systems))
@@ -480,6 +608,16 @@ class MusicService:
             "events": sorted(events, key=lambda event: (float(event["start"]), str(event["string"]))),
             "string_count": common_count,
         }
+
+    @staticmethod
+    def _tab_ocr_executable() -> str | None:
+        configured = settings.music_tab_ocr_executable.strip()
+        if not configured:
+            return None
+        path = Path(configured).expanduser()
+        if path.is_file():
+            return str(path)
+        return shutil.which(configured)
 
     @staticmethod
     def _tab_systems_from_glyphs(glyphs: list[dict[str, Any]]) -> list[tuple[list[float], list[dict[str, Any]]]]:

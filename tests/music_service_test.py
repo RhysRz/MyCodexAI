@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import wave
 
+from PIL import Image, ImageDraw
 from reportlab.pdfgen import canvas
 
 from app.core.settings import settings
@@ -53,6 +54,21 @@ class _VectorTabPage:
 
 class _VectorTabReader:
     pages = [_VectorTabPage()]
+
+
+class _RasterTabImage:
+    def __init__(self, image):
+        self.image = image
+
+
+class _RasterTabPage:
+    def __init__(self, image):
+        self.images = [_RasterTabImage(image)]
+
+
+class _RasterTabReader:
+    def __init__(self, image):
+        self.pages = [_RasterTabPage(image)]
 
 
 def test_music_lab_creates_private_midi_chord_and_tab_exports():
@@ -103,6 +119,30 @@ def test_vector_tab_reader_keeps_the_source_string_and_fret():
     assert tablature["notes"][0]["midi"] == 67
     analysis = MusicService._analysis_from_tablature(tablature, 120, 1, True)
     assert "string  fret" in MusicService._guitar_tab(analysis)
+
+
+def test_raster_tab_reader_detects_six_strings_and_keeps_frets(monkeypatch):
+    image = Image.new("L", (900, 420), 255)
+    drawing = ImageDraw.Draw(image)
+    rows = [120 + index * 24 for index in range(6)]
+    for row in rows:
+        drawing.line((80, row, 820, row), fill=0, width=2)
+    monkeypatch.setattr(settings, "music_tab_ocr_executable", "trusted-tesseract")
+    monkeypatch.setattr(MusicService, "_tab_ocr_executable", staticmethod(lambda: "trusted-tesseract"))
+    monkeypatch.setattr(
+        MusicService,
+        "_ocr_raster_tab_glyphs",
+        staticmethod(lambda _gray, groups, _executable, _path: [
+            {"token": token, "x": 180 + index * 60, "y": groups[0][index]}
+            for index, token in enumerate(("3", "0", "0", "0", "2", "3"))
+        ]),
+    )
+    tablature = MusicService._extract_raster_tablature(_RasterTabReader(image), 120)
+    assert tablature["instrument"] == "6-string guitar"
+    assert tablature["string_count"] == 6
+    assert [(note["string"], note["fret"]) for note in tablature["notes"]] == [
+        ("e", 3), ("B", 0), ("G", 0), ("D", 0), ("A", 2), ("E", 3),
+    ]
 
 
 def test_musicxml_omr_output_becomes_editable_notes():
