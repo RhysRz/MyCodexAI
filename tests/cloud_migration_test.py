@@ -146,7 +146,11 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "download_source" in runner
     assert "Audiveris-5.11.0-ubuntu24.04-x86_64.deb" in workflow
     assert "f20113aaa33b3149ec8d6a09b2a7963360e65fafd92d69389987a85bbc3ec7a3" in workflow
+    assert "dpkg-deb --extract" in workflow
+    assert "Report workflow setup failure" in workflow
+    assert ".mycodexai-music-runner-started" in workflow
     assert 'os.environ.setdefault("MUSIC_OMR_EXECUTABLE", "")' in runner
+    assert 'STARTED_MARKER.write_text("started\\n"' in runner
 
 
 def test_cloud_image_caption_is_composed_outside_the_model() -> None:

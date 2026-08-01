@@ -23,6 +23,7 @@ USER_ID = os.environ["MYCODEXAI_MUSIC_USER_ID"]
 CLOUD_URL = os.environ["MYCODEXAI_CLOUD_URL"].rstrip("/")
 RUNNER_SECRET = os.environ["MYCODEXAI_RUNNER_SECRET"]
 STATE_ROOT = ROOT / ".mycodexai-music-job" / "runs"
+STARTED_MARKER = ROOT / ".mycodexai-music-runner-started"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -99,6 +100,7 @@ def encoded_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, str
 
 
 def main() -> int:
+    STARTED_MARKER.write_text("started\n", encoding="utf-8")
     callback("running")
     try:
         user = CloudMusicUser(USER_ID, "cloud-music-user", "user")

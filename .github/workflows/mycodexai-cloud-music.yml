@@ -69,9 +69,48 @@ jobs:
               "https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb"
           fi
           echo "f20113aaa33b3149ec8d6a09b2a7963360e65fafd92d69389987a85bbc3ec7a3  $deb" | sha256sum --check --strict
-          sudo apt-get install --yes "$deb"
-          test -x "$MUSIC_OMR_EXECUTABLE"
-          "$MUSIC_OMR_EXECUTABLE" -version
+          # The upstream .deb post-install script registers a desktop menu and
+          # fails on headless GitHub runners. Extract the verified application
+          # payload directly instead; Audiveris bundles its own JRE.
+          audiveris_root="$RUNNER_TEMP/mycodexai-audiveris"
+          rm -rf "$audiveris_root"
+          mkdir -p "$audiveris_root"
+          dpkg-deb --extract "$deb" "$audiveris_root"
+          audiveris_executable="$audiveris_root/opt/audiveris/bin/Audiveris"
+          test -x "$audiveris_executable"
+          echo "MUSIC_OMR_EXECUTABLE=$audiveris_executable" >> "$GITHUB_ENV"
+          "$audiveris_executable" -version
 
       - name: Analyze one private music file
         run: python cloud/runner/run_music_job.py
+
+      - name: Report workflow setup failure
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [[ -f .mycodexai-music-runner-started ]]; then
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          request = urllib.request.Request(
+              os.environ["MYCODEXAI_CLOUD_URL"].rstrip("/") + "/api/internal/music/callback",
+              data=json.dumps({
+                  "job_id": os.environ["MYCODEXAI_MUSIC_JOB_ID"],
+                  "status": "failed",
+                  "error_detail": "GitHub Runner เตรียมระบบ OMR ไม่สำเร็จ กรุณาเปิด Actions log หรือลองใหม่",
+              }, ensure_ascii=False).encode("utf-8"),
+              method="POST",
+              headers={
+                  "Authorization": "Bearer " + os.environ["MYCODEXAI_RUNNER_SECRET"],
+                  "Content-Type": "application/json",
+                  "User-Agent": "MyCodexAI-Music-Runner/1.0",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=60):
+              pass
+          PY
