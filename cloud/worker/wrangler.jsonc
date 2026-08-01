@@ -50,6 +50,7 @@
 	},
 	"vars": {
 		"AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+		"IMAGE_MODEL": "@cf/black-forest-labs/flux-2-klein-9b",
 		"GITHUB_OWNER": "RhysRz",
 		"GITHUB_REPO": "MyCodexAI",
 		"PUBLIC_ORIGIN": "https://mycodexai-cloud.mycodexai-cloud-worker.workers.dev",

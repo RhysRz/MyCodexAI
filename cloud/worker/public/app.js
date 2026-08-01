@@ -6,6 +6,8 @@ let account = null;
 let conversationId = null;
 let files = [];
 let runTimer = null;
+let musicTimer = null;
+let imageBlob = null;
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -48,11 +50,15 @@ function openSidebar() {
 function showView(name) {
   $$(".view").forEach((node) => node.classList.toggle("active-view", node.id === `view-${name}`));
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === name));
-  const titles = { chat: "MyCodex", agent: "Cloud Agent", files: "ไฟล์แนบ", admin: "ผู้ดูแลระบบ" };
+  const titles = { chat: "MyCodex", agent: "Cloud Agent", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
   $("#view-title").textContent = titles[name] || "MyCodexAI";
   closeSidebar();
   if (name === "agent") loadRuns();
   if (name === "files") loadFiles();
+  if (name === "images") loadImageStatus();
+  if (name === "music") loadMusicJobs();
+  if (name === "training") loadTraining();
+  if (name === "system") loadSystem();
   if (name === "admin") loadSessions();
 }
 
@@ -129,7 +135,46 @@ async function sendMessage(message) {
     if (done) break;
   }
   pending.bubble.classList.remove("typing");
+  if ($("#voice-auto-read").checked && pending.text.textContent.trim()) speakThai(pending.text.textContent);
   await loadConversations();
+}
+
+function speechRecognition() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function listenThai() {
+  const Recognition = speechRecognition();
+  if (!Recognition) {
+    toast("เบราว์เซอร์นี้ยังไม่รองรับการรับเสียง กรุณาใช้ Chrome, Edge หรือ Safari รุ่นล่าสุด");
+    return;
+  }
+  const recognition = new Recognition();
+  recognition.lang = "th-TH";
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  const button = $("#voice-input");
+  const status = $("#voice-status");
+  recognition.onstart = () => { button.classList.add("listening"); status.textContent = "กำลังฟัง…"; };
+  recognition.onresult = (event) => {
+    const transcript = [...event.results].map((result) => result[0]?.transcript || "").join("");
+    $("#message-input").value = transcript;
+    status.textContent = event.results[event.results.length - 1]?.isFinal ? "รับข้อความแล้ว" : "กำลังถอดเสียง…";
+  };
+  recognition.onerror = (event) => { status.textContent = event.error === "not-allowed" ? "ไมโครโฟนไม่ได้รับอนุญาต" : "รับเสียงไม่สำเร็จ"; };
+  recognition.onend = () => button.classList.remove("listening");
+  recognition.start();
+}
+
+function speakThai(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(String(text || "").slice(0, 5_000));
+  utterance.lang = "th-TH";
+  utterance.rate = 1;
+  const voices = window.speechSynthesis.getVoices();
+  utterance.voice = voices.find((voice) => voice.lang.toLowerCase().startsWith("th")) || null;
+  window.speechSynthesis.speak(utterance);
 }
 
 async function loadFiles() {
@@ -155,6 +200,11 @@ async function loadFiles() {
     const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.value = file.id;
     label.append(checkbox, document.createTextNode(file.name)); choices.append(label);
   });
+  const musicSelect = $("#music-file");
+  const selectedMusic = musicSelect.value;
+  musicSelect.replaceChildren(new Option("เลือกไฟล์ PDF หรือ WAV", ""));
+  ready.filter((file) => /\.(pdf|wav|wave)$/i.test(file.name)).forEach((file) => musicSelect.append(new Option(file.name, file.id)));
+  if ([...musicSelect.options].some((option) => option.value === selectedMusic)) musicSelect.value = selectedMusic;
 }
 
 async function uploadFile(file) {
@@ -201,8 +251,216 @@ async function loadSessions() {
   const list = $("#session-list"); list.replaceChildren();
   data.sessions.forEach((session) => {
     const card = element("article", "item-card");
-    card.append(element("h3", "", `${session.current ? "อุปกรณ์นี้ · " : ""}${session.device_label}`), element("p", "", `ใช้งานล่าสุด ${new Date(session.last_seen_at).toLocaleString("th-TH")}`));
+    card.append(element("h3", "", `${session.current ? "อุปกรณ์นี้ · " : ""}${session.device_label}`), element("p", "", `ใช้งานล่าสุด ${new Date(session.last_seen_at * 1000).toLocaleString("th-TH")}`));
     list.append(card);
+  });
+}
+
+async function loadImageStatus() {
+  const status = await api("/api/images/status");
+  $("#image-quota").textContent = status.quota_exempt ? "ผู้ดูแลระบบ · ไม่จำกัดจำนวนภาพ" : `เหลือ ${status.remaining_today}/${status.daily_limit} ภาพวันนี้`;
+}
+
+function compactMusicSummary(analysis) {
+  if (!analysis || typeof analysis !== "object") return "ประมวลผลเสร็จแล้ว";
+  const parts = [];
+  if (analysis.tempo_bpm || analysis.bpm) parts.push(`Tempo ${Math.round(analysis.tempo_bpm || analysis.bpm)} BPM`);
+  if (analysis.key) parts.push(`คีย์ ${analysis.key}`);
+  if (Array.isArray(analysis.chords) && analysis.chords.length) {
+    const chords = analysis.chords.slice(0, 8).map((item) => typeof item === "string" ? item : item.chord || item.name).filter(Boolean);
+    if (chords.length) parts.push(`คอร์ด ${chords.join(" · ")}`);
+  }
+  if (Array.isArray(analysis.detected_parts) && analysis.detected_parts.length) {
+    parts.push(`เครื่องดนตรี ${analysis.detected_parts.slice(0, 5).map((item) => item.name || item).join(" · ")}`);
+  }
+  return parts.join("\n") || "ประมวลผลเสร็จแล้ว พร้อมดาวน์โหลดผลลัพธ์";
+}
+
+async function loadMusicJobs() {
+  const data = await api("/api/music/jobs");
+  const list = $("#music-list"); list.replaceChildren();
+  if (!data.jobs.length) list.append(element("p", "muted", "ยังไม่มีงาน Music Lab"));
+  let active = false;
+  data.jobs.forEach((job) => {
+    if (!["completed", "failed"].includes(job.status)) active = true;
+    const card = element("article", "item-card");
+    card.append(element("h3", "", job.file_name), statusBadge(job.status));
+    if (job.analysis) card.append(element("p", "music-summary", compactMusicSummary(job.analysis)));
+    if (job.error_detail) card.append(element("p", "error", job.error_detail));
+    const actions = element("div", "item-actions");
+    (job.artifacts || []).forEach((artifact) => {
+      const link = element("a", "secondary", `ดาวน์โหลด ${artifact.kind.toUpperCase()}`);
+      link.href = artifact.url; link.download = artifact.file_name; actions.append(link);
+    });
+    card.append(actions); list.append(card);
+  });
+  clearTimeout(musicTimer);
+  if (active) musicTimer = setTimeout(() => loadMusicJobs().catch(() => {}), 8_000);
+}
+
+function thaiUnits(value) {
+  if (window.Intl?.Segmenter) return [...new Intl.Segmenter("th", { granularity: "word" }).segment(value)].map((item) => item.segment);
+  return Array.from(value);
+}
+
+function wrapCanvasText(context, value, maximumWidth) {
+  const lines = [];
+  for (const paragraph of String(value || "").split(/\r?\n/)) {
+    let line = "";
+    for (const unit of thaiUnits(paragraph)) {
+      const candidate = `${line}${unit}`;
+      if (line && context.measureText(candidate).width > maximumWidth) {
+        lines.push(line.trim());
+        line = unit.trimStart();
+      } else line = candidate;
+    }
+    if (line.trim()) lines.push(line.trim());
+  }
+  return lines.slice(0, 6);
+}
+
+async function imageBitmap(blob) {
+  if (window.createImageBitmap) return createImageBitmap(blob);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(blob);
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("เปิดภาพที่สร้างไม่สำเร็จ")); };
+    image.src = url;
+  });
+}
+
+async function renderGeneratedImage(blob, caption) {
+  const canvas = $("#image-canvas");
+  const context = canvas.getContext("2d");
+  const source = await imageBitmap(blob);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  if (typeof source.close === "function") source.close();
+  const cleanCaption = String(caption || "").trim();
+  if (cleanCaption) {
+    context.font = "700 58px 'Noto Sans Thai', 'Leelawadee UI', sans-serif";
+    context.textBaseline = "top";
+    const lines = wrapCanvasText(context, cleanCaption, 864);
+    const lineHeight = 78;
+    const height = lines.length * lineHeight + 76;
+    const top = canvas.height - height - 54;
+    context.fillStyle = "rgba(9, 12, 18, .76)";
+    context.beginPath();
+    context.roundRect(44, top, 936, height, 26);
+    context.fill();
+    context.fillStyle = "#ffffff";
+    lines.forEach((line, index) => context.fillText(line, 80, top + 38 + index * lineHeight, 864));
+  }
+  canvas.classList.remove("hidden");
+  $("#image-empty").classList.add("hidden");
+  $("#image-actions").classList.remove("hidden");
+}
+
+async function generateImage() {
+  const button = $("#generate-image");
+  button.disabled = true;
+  button.textContent = "กำลังสร้างภาพ…";
+  try {
+    const response = await fetch("/api/images/generate", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: $("#image-prompt").value, caption: $("#image-caption").value }),
+    });
+    if (response.status === 401) return location.replace("/login");
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || `สร้างภาพไม่สำเร็จ (${response.status})`);
+    }
+    imageBlob = await response.blob();
+    await renderGeneratedImage(imageBlob, $("#image-caption").value);
+    const remaining = response.headers.get("X-Image-Remaining");
+    $("#image-quota").textContent = remaining === "unlimited" ? "ผู้ดูแลระบบ · ไม่จำกัดจำนวนภาพ" : `เหลือ ${remaining} ภาพวันนี้`;
+    toast("สร้างภาพเรียบร้อยแล้ว");
+  } finally {
+    button.disabled = false;
+    button.textContent = "สร้างภาพ";
+  }
+}
+
+function downloadBlob(blob, name) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1_000);
+}
+
+function canvasPng() {
+  return new Promise((resolve, reject) => $("#image-canvas").toBlob((blob) => blob ? resolve(blob) : reject(new Error("เตรียมไฟล์ PNG ไม่สำเร็จ")), "image/png"));
+}
+
+function xmlText(value) {
+  return String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+}
+
+async function blobDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("เตรียมไฟล์สำหรับ Canva ไม่สำเร็จ"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function exportCanvaSvg() {
+  if (!imageBlob) throw new Error("กรุณาสร้างภาพก่อน");
+  const image = await blobDataUrl(imageBlob);
+  const caption = String($("#image-caption").value || "").trim();
+  const canvas = $("#image-canvas");
+  const context = canvas.getContext("2d");
+  context.font = "700 58px 'Noto Sans Thai', 'Leelawadee UI', sans-serif";
+  const lines = caption ? wrapCanvasText(context, caption, 864) : [];
+  const height = lines.length * 78 + 76;
+  const top = 1024 - height - 54;
+  const textNodes = lines.map((line, index) => `<text x="80" y="${top + 91 + index * 78}" fill="#fff" font-family="Noto Sans Thai,Leelawadee UI,sans-serif" font-size="58" font-weight="700">${xmlText(line)}</text>`).join("");
+  const overlay = lines.length ? `<rect x="44" y="${top}" width="936" height="${height}" rx="26" fill="#090c12" fill-opacity=".76"/>${textNodes}` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><image href="${image}" width="1024" height="1024"/>${overlay}</svg>`;
+  downloadBlob(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), "mycodex-canva.svg");
+  toast("ส่งออก SVG สำหรับนำเข้า Canva แล้ว");
+}
+
+async function loadTraining() {
+  if (account?.role !== "admin") return;
+  const data = await api("/api/learning/overview");
+  const summary = $("#training-summary");
+  summary.replaceChildren();
+  [["ตัวอย่าง", data.examples.length], ["โจทย์ประเมิน", data.evaluations.length]].forEach(([label, value]) => {
+    const card = element("div", "stat-card"); card.append(element("strong", "", String(value)), element("span", "", label)); summary.append(card);
+  });
+  const list = $("#training-list"); list.replaceChildren();
+  if (!data.examples.length) list.append(element("p", "muted", "ยังไม่มีตัวอย่างการตอบ"));
+  data.examples.slice(0, 20).forEach((item) => {
+    const card = element("article", "item-card");
+    card.append(element("h3", "", item.instruction), element("p", "", item.ideal_response), element("span", "badge", (item.tags || []).join(" · ") || "ไม่มีแท็ก"));
+    list.append(card);
+  });
+}
+
+async function loadSystem() {
+  if (account?.role !== "admin") return;
+  const [overview, auditLog] = await Promise.all([api("/api/admin/overview"), api("/api/admin/audit")]);
+  const counts = $("#system-counts"); counts.replaceChildren();
+  const labels = { users: "ผู้ใช้", conversations: "แชท", messages: "ข้อความ", agent_runs: "งาน Agent", active_runs: "งานที่กำลังรัน", files: "ไฟล์", images_today: "ภาพวันนี้", training_examples: "ตัวอย่างฝึก", training_evaluations: "โจทย์ประเมิน", music_jobs: "งานเพลง" };
+  Object.entries(labels).forEach(([key, label]) => { const card = element("div", "stat-card"); card.append(element("strong", "", String(overview.counts[key] || 0)), element("span", "", label)); counts.append(card); });
+  const capabilities = $("#capability-list"); capabilities.replaceChildren();
+  overview.capabilities.forEach((item) => {
+    const card = element("article", "item-card capability-card");
+    const ready = item.state !== "remote-worker-required";
+    const stateLabel = item.state === "cloud-runner" ? "พร้อมผ่าน GitHub Runner" : ready ? "พร้อมบน Cloud" : "ต้องเชื่อม Remote Worker";
+    card.append(element("h3", "", item.label), element("span", `badge${ready ? "" : " warning"}`, stateLabel));
+    capabilities.append(card);
+  });
+  $("#music-worker-state").textContent = overview.remote_worker.status;
+  const auditList = $("#audit-list"); auditList.replaceChildren();
+  auditLog.events.forEach((item) => {
+    const card = element("article", "item-card");
+    card.append(element("h3", "", `${item.kind} · ${item.outcome}`), element("p", "", `${item.username || "system"} · ${new Date(item.created_at * 1000).toLocaleString("th-TH")}`), element("p", "", item.detail));
+    auditList.append(card);
   });
 }
 
@@ -213,7 +471,7 @@ async function boot() {
   if (account.role === "admin") $$(".admin-only").forEach((node) => node.classList.remove("hidden"));
   const status = await api("/api/cloud/status");
   $("#cloud-state").textContent = status.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
-  await Promise.all([loadHistory(), loadFiles()]);
+  await Promise.all([loadHistory(), loadFiles(), loadImageStatus()]);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
@@ -225,8 +483,19 @@ $("#refresh-runs").addEventListener("click", () => loadRuns().catch((error) => t
 $("#new-chat").addEventListener("click", async () => { const data = await api("/api/chat/conversations", { method: "POST", body: "{}" }); await loadHistory(data.id); showView("chat"); });
 $("#composer").addEventListener("submit", async (event) => { event.preventDefault(); const input = $("#message-input"); const message = input.value.trim(); if (!message) return; input.value = ""; input.disabled = true; try { await sendMessage(message); } catch (error) { toast(error.message); } finally { input.disabled = false; input.focus(); } });
 $("#message-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("#composer").requestSubmit(); } });
+$("#voice-input").addEventListener("click", listenThai);
 $("#file-picker").addEventListener("change", async (event) => { try { for (const file of event.target.files) await uploadFile(file); $("#upload-status").textContent = "อัปโหลดเรียบร้อย"; await loadFiles(); } catch (error) { toast(error.message); } finally { event.target.value = ""; } });
 $("#agent-form").addEventListener("submit", async (event) => { event.preventDefault(); const attachments = $$("#agent-files input:checked").map((node) => node.value); try { await api("/api/agent/runs", { method: "POST", body: JSON.stringify({ task: $("#agent-task").value, mode: $("#agent-mode").value, attachments }) }); $("#agent-task").value = ""; toast("ส่งงานเข้าคิวแล้ว"); await loadRuns(); } catch (error) { toast(error.message); } });
+$("#image-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await generateImage(); } catch (error) { toast(error.message); } });
+$("#music-form").addEventListener("submit", async (event) => { event.preventDefault(); const button = $("#start-music"); button.disabled = true; try { await api("/api/music/jobs", { method: "POST", body: JSON.stringify({ file_id: $("#music-file").value }) }); toast("ส่งงาน Music Lab เข้าคิวแล้ว"); await loadMusicJobs(); } catch (error) { toast(error.message); } finally { button.disabled = false; } });
+$("#refresh-music").addEventListener("click", () => loadMusicJobs().catch((error) => toast(error.message)));
+$("#download-image").addEventListener("click", async () => { try { downloadBlob(await canvasPng(), "mycodex-image.png"); } catch (error) { toast(error.message); } });
+$("#export-canva").addEventListener("click", () => exportCanvaSvg().catch((error) => toast(error.message)));
+$("#training-example-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await api("/api/learning/examples", { method: "POST", body: JSON.stringify({ instruction: $("#training-instruction").value, ideal_response: $("#training-response").value, tags: $("#training-tags").value.split(",").map((item) => item.trim()).filter(Boolean) }) }); event.target.reset(); toast("บันทึกตัวอย่างแล้ว"); await loadTraining(); } catch (error) { toast(error.message); } });
+$("#training-evaluation-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await api("/api/learning/evaluations", { method: "POST", body: JSON.stringify({ prompt: $("#evaluation-prompt").value, expected: $("#evaluation-expected").value }) }); event.target.reset(); toast("บันทึกโจทย์ประเมินแล้ว"); await loadTraining(); } catch (error) { toast(error.message); } });
+$("#refresh-training").addEventListener("click", () => loadTraining().catch((error) => toast(error.message)));
+$("#export-training").addEventListener("click", () => { location.href = "/api/learning/export"; });
+$("#refresh-system").addEventListener("click", () => loadSystem().catch((error) => toast(error.message)));
 $("#create-invite").addEventListener("click", async () => { try { const data = await api("/api/auth/invites", { method: "POST", body: JSON.stringify({ role: $("#invite-role").value }) }); $("#invite-result").value = `${location.origin}/login?invite=${encodeURIComponent(data.token)}`; } catch (error) { toast(error.message); } });
 $("#revoke-sessions").addEventListener("click", async () => { await api("/api/auth/sessions/revoke-others", { method: "POST", body: "{}" }); toast("ออกจากระบบอุปกรณ์อื่นแล้ว"); await loadSessions(); });
 $("#logout").addEventListener("click", async () => { await api("/api/auth/logout", { method: "POST", body: "{}" }); location.replace("/login"); });

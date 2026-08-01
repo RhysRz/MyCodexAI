@@ -53,6 +53,18 @@ async function recentMessages(context: RequestContext, conversationId: string): 
   return rows.results || [];
 }
 
+async function learnedExamples(context: RequestContext): Promise<Array<{ instruction: string; ideal_response: string }>> {
+  try {
+    const rows = await context.env.DB.prepare(
+      "SELECT instruction, ideal_response FROM training_examples ORDER BY created_at DESC LIMIT 8",
+    ).all<{ instruction: string; ideal_response: string }>();
+    return rows.results || [];
+  } catch {
+    // Keep chat available while a new migration is still being applied.
+    return [];
+  }
+}
+
 function aiText(output: unknown): string {
   if (typeof output === "string") return output;
   if (!output || typeof output !== "object") return "";
@@ -110,9 +122,16 @@ async function streamChat(context: RequestContext): Promise<Response> {
       "UPDATE conversations SET title = CASE WHEN ? = 0 THEN ? ELSE title END, updated_at = ? WHERE id = ? AND user_id = ?",
     ).bind(Number(existingCount?.count || 0), message.slice(0, 80), now, conversationId, context.user.id),
   ]);
-  const history = await recentMessages(context, conversationId);
+  const [history, examples] = await Promise.all([
+    recentMessages(context, conversationId),
+    learnedExamples(context),
+  ]);
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
+    ...examples.flatMap((item) => [
+      { role: "user", content: item.instruction },
+      { role: "assistant", content: item.ideal_response },
+    ]),
     ...history.map((item) => ({ role: item.role, content: item.content })),
   ];
 

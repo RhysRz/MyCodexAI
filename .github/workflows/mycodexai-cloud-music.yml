@@ -1,0 +1,53 @@
+name: MyCodexAI Cloud Music
+
+on:
+  repository_dispatch:
+    types: [mycodexai-music]
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Existing Cloud Music job ID
+        required: true
+      file_id:
+        description: Cloud attachment ID
+        required: true
+      file_name:
+        description: Source filename
+        required: true
+      user_id:
+        description: Cloud user ID
+        required: true
+
+concurrency:
+  group: mycodexai-cloud-heavy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MYCODEXAI_CLOUD_URL: ${{ secrets.MYCODEXAI_CLOUD_URL }}
+      MYCODEXAI_RUNNER_SECRET: ${{ secrets.MYCODEXAI_RUNNER_SECRET }}
+      MYCODEXAI_MUSIC_JOB_ID: ${{ github.event.client_payload.job_id || inputs.job_id }}
+      MYCODEXAI_MUSIC_FILE_ID: ${{ github.event.client_payload.file_id || inputs.file_id }}
+      MYCODEXAI_MUSIC_FILE_NAME: ${{ github.event.client_payload.file_name || inputs.file_name }}
+      MYCODEXAI_MUSIC_USER_ID: ${{ github.event.client_payload.user_id || inputs.user_id }}
+    steps:
+      - name: Check out private repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Analyze one private music file
+        run: python cloud/runner/run_music_job.py

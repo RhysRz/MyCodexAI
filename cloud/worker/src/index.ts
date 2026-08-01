@@ -2,6 +2,10 @@ import { consumeAgentQueue, handleAgent } from "./agent";
 import { handleAuth } from "./auth";
 import { handleChat } from "./chat";
 import { cleanupExpiredFiles, handleFiles } from "./files";
+import { handleImages } from "./images";
+import { handleLearning } from "./learning";
+import { handleAdmin } from "./admin";
+import { handleMusic } from "./music";
 import { currentUser, epochSeconds, errorJson, json, sameOrigin, secure } from "./security";
 import type { AgentQueueMessage, Env, RequestContext } from "./types";
 
@@ -28,7 +32,7 @@ async function route(request: Request, env: Env, execution: ExecutionContext): P
   if (path === "/api/health" && request.method === "GET") return json({ status: "ok", runtime: "cloudflare-workers" });
 
   const context: RequestContext = { request, env, execution, user: await currentUser(request, env) };
-  const handlers = [handleAuth, handleChat, handleAgent, handleFiles];
+  const handlers = [handleAuth, handleChat, handleAgent, handleFiles, handleImages, handleLearning, handleAdmin, handleMusic];
   for (const handler of handlers) {
     const response = await handler(context, path);
     if (response) return response;

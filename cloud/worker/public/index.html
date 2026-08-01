@@ -17,6 +17,10 @@
       <button class="nav-item active" data-view="chat">⌘ แชทกับ MyCodex</button>
       <button class="nav-item" data-view="agent">↗ Cloud Agent</button>
       <button class="nav-item" data-view="files">＋ ไฟล์แนบ</button>
+      <button class="nav-item" data-view="images">◇ Image Studio</button>
+      <button class="nav-item" data-view="music">♫ Music Lab</button>
+      <button class="nav-item admin-only hidden" data-view="training">✦ Training Lab</button>
+      <button class="nav-item admin-only hidden" data-view="system">◉ สถานะระบบ</button>
       <button class="nav-item admin-only hidden" data-view="admin">⚙ ผู้ดูแลระบบ</button>
     </nav>
     <div class="history-head"><span>ประวัติแชท</span><button id="refresh-history" class="icon-button" aria-label="โหลดใหม่">↻</button></div>
@@ -40,7 +44,7 @@
       </div>
       <form id="composer" class="composer">
         <textarea id="message-input" rows="1" maxlength="8000" placeholder="ส่งข้อความให้ MyCodex…" required></textarea>
-        <div class="composer-row"><span class="muted tiny">Enter เพื่อส่ง · Shift+Enter ขึ้นบรรทัดใหม่</span><button class="send-button" type="submit" aria-label="ส่งข้อความ">↑</button></div>
+        <div class="composer-row"><div class="composer-tools"><button id="voice-input" class="icon-button" type="button" aria-label="พูดข้อความ" title="พูดข้อความ">◉</button><label class="voice-toggle"><input id="voice-auto-read" type="checkbox"> ตอบเป็นเสียง</label><span id="voice-status" class="muted tiny">พร้อมรับเสียงภาษาไทย</span></div><button class="send-button" type="submit" aria-label="ส่งข้อความ">↑</button></div>
       </form>
     </section>
 
@@ -61,6 +65,70 @@
     <section id="view-files" class="view">
       <div class="panel narrow"><p class="eyebrow">ATTACHMENTS</p><h1>ไฟล์ชั่วคราวบนคลาวด์</h1><p class="muted">ไม่เกินไฟล์ละ 10 MB รวม 50 MB และลบอัตโนมัติใน 7 วัน</p><label class="upload-box">เลือกไฟล์<input id="file-picker" type="file" multiple></label><div id="upload-status" class="muted"></div></div>
       <div class="panel"><div class="section-title"><h2>ไฟล์ของฉัน</h2><button id="refresh-files" class="secondary">โหลดใหม่</button></div><div id="file-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-images" class="view">
+      <div class="panel studio-grid">
+        <div>
+          <p class="eyebrow">IMAGE STUDIO</p><h1>สร้างภาพด้วย MyCodex</h1>
+          <p class="muted">สร้างพื้นหลังด้วย Workers AI แล้ววางข้อความภาษาไทยแยกชั้น เพื่อไม่ให้โมเดลเขียนภาษาไทยผิด</p>
+          <form id="image-form">
+            <label>อธิบายภาพที่ต้องการ<textarea id="image-prompt" rows="6" maxlength="2000" placeholder="เช่น ภาพสำนักงานสมัยใหม่ โทนน้ำเงินเข้ม มีพื้นที่ว่างด้านบนสำหรับหัวข้อ" required></textarea></label>
+            <label>ข้อความภาษาไทยบนภาพ (ไม่บังคับ)<textarea id="image-caption" rows="3" maxlength="500" placeholder="เช่น เปิดรับสมัครงาน วันนี้"></textarea></label>
+            <div class="item-actions"><button id="generate-image" class="primary" type="submit">สร้างภาพ</button><span id="image-quota" class="muted tiny">กำลังตรวจสอบสิทธิ์…</span></div>
+          </form>
+        </div>
+        <div class="studio-preview">
+          <div id="image-empty" class="empty-state"><span>◇</span><strong>ภาพจะแสดงที่นี่</strong><small>ขนาด 1024 × 1024</small></div>
+          <canvas id="image-canvas" class="hidden" width="1024" height="1024" aria-label="ภาพที่สร้างโดย MyCodex"></canvas>
+          <div id="image-actions" class="item-actions hidden"><button id="download-image" class="secondary" type="button">ดาวน์โหลด PNG</button><button id="export-canva" class="secondary" type="button">ส่งออก SVG สำหรับ Canva</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-music" class="view">
+      <div class="panel narrow">
+        <p class="eyebrow">MUSIC LAB</p><h1>แกะเพลง, PDF, TAB และ OMR</h1>
+        <p class="muted">เลือกไฟล์ PDF หรือ WAV ที่อัปโหลดไว้ งานจะประมวลผลบน GitHub Runner จึงไม่ใช้ CPU/RAM ของคอมคุณ</p>
+        <form id="music-form">
+          <label>ไฟล์ต้นฉบับ<select id="music-file" required><option value="">เลือกไฟล์ PDF หรือ WAV</option></select></label>
+          <button id="start-music" class="primary" type="submit">เริ่มวิเคราะห์</button>
+        </form>
+        <div class="capability-note"><strong>ความสามารถปัจจุบัน</strong><p>อ่านคอร์ดและ PDF โน้ตแบบเวกเตอร์, อ่านสาย/เฟรตจาก PDF TAB, วิเคราะห์ WAV และส่งออก Analysis, MIDI, คอร์ด และ TAB ส่วน PDF สแกนที่ไม่มีข้อมูลเวกเตอร์ยังต้องเพิ่ม OMR engine ใน Runner</p></div>
+      </div>
+      <div class="panel"><div class="section-title"><h2>งาน Music Lab</h2><button id="refresh-music" class="secondary">โหลดใหม่</button></div><div id="music-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-training" class="view">
+      <div class="panel">
+        <p class="eyebrow">TRAINING LAB · ADMIN</p><h1>สอนแนวทางการตอบให้ MyCodex</h1>
+        <p class="muted">ตัวอย่างล่าสุดจะถูกใส่เป็นบริบทให้แชท Cloud อัตโนมัติ และส่งออกเป็น JSONL ได้</p>
+        <div class="two-column">
+          <form id="training-example-form" class="subpanel">
+            <h2>เพิ่มตัวอย่างคำตอบ</h2>
+            <label>คำสั่งตัวอย่าง<textarea id="training-instruction" rows="4" maxlength="12000" required></textarea></label>
+            <label>คำตอบที่ต้องการ<textarea id="training-response" rows="6" maxlength="24000" required></textarea></label>
+            <label>แท็ก คั่นด้วยจุลภาค<input id="training-tags" maxlength="500" placeholder="ภาษาไทย, โค้ด, กระชับ"></label>
+            <button class="primary" type="submit">บันทึกตัวอย่าง</button>
+          </form>
+          <form id="training-evaluation-form" class="subpanel">
+            <h2>เพิ่มโจทย์ประเมิน</h2>
+            <label>โจทย์<textarea id="evaluation-prompt" rows="4" maxlength="12000" required></textarea></label>
+            <label>เกณฑ์คำตอบที่ถูกต้อง<textarea id="evaluation-expected" rows="6" maxlength="24000" required></textarea></label>
+            <button class="primary" type="submit">บันทึกโจทย์</button>
+          </form>
+        </div>
+      </div>
+      <div class="panel"><div class="section-title"><h2>ข้อมูลฝึกส่วนตัว</h2><div class="item-actions"><button id="refresh-training" class="secondary">โหลดใหม่</button><button id="export-training" class="secondary">ส่งออก JSONL</button></div></div><div id="training-summary" class="stat-grid"></div><div id="training-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-system" class="view">
+      <div class="panel">
+        <p class="eyebrow">SYSTEM · ADMIN</p><h1>สถานะและความพร้อมของระบบ</h1>
+        <div id="system-counts" class="stat-grid"></div>
+        <h2>ความสามารถ</h2><div id="capability-list" class="card-list"></div>
+      </div>
+      <div class="panel"><div class="section-title"><h2>Audit log ล่าสุด</h2><button id="refresh-system" class="secondary">โหลดใหม่</button></div><p class="muted tiny">ไม่บันทึกรหัสผ่าน, API key, token หรือ prompt สร้างภาพ</p><div id="audit-list" class="card-list"></div></div>
     </section>
 
     <section id="view-admin" class="view">

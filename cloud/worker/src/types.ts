@@ -14,6 +14,7 @@ export interface Env {
   ASSETS: Fetcher;
   AGENT_QUEUE: Queue<AgentQueueMessage>;
   AI_MODEL: string;
+  IMAGE_MODEL?: string;
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_TOKEN: string;

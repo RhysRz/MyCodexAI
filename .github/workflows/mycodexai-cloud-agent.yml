@@ -17,7 +17,7 @@ on:
         default: agent
 
 concurrency:
-  group: mycodexai-cloud-agent
+  group: mycodexai-cloud-heavy
   cancel-in-progress: false
 
 permissions:
