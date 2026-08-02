@@ -43,6 +43,8 @@ jobs:
       MUSIC_OMR_EXECUTABLE: /opt/audiveris/bin/Audiveris
       MUSIC_FFMPEG_EXECUTABLE: ffmpeg
       MUSIC_DEMUCS_MODEL: htdemucs_6s
+      MUSIC_MEDIA_BRIDGE_URL: ${{ secrets.MYCODEXAI_MEDIA_BRIDGE_URL }}
+      MUSIC_MEDIA_BRIDGE_KEY: ${{ secrets.MYCODEXAI_MEDIA_BRIDGE_KEY }}
     steps:
       - name: Check out private repository
         uses: actions/checkout@v6

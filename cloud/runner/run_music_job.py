@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -167,6 +168,48 @@ def _report_media_diagnostics(diagnostics: list[str]) -> None:
             print(f"::warning::YouTube strategy {strategy.strip()} failed: {summary}", file=sys.stderr)
 
 
+def _download_from_media_bridge(url: str, platform: str, source_id: str) -> tuple[bytes, dict[str, Any]] | None:
+    bridge_url = os.environ.get("MUSIC_MEDIA_BRIDGE_URL", "").strip().rstrip("/")
+    bridge_key = os.environ.get("MUSIC_MEDIA_BRIDGE_KEY", "").strip()
+    if not bridge_url or len(bridge_key) < 32:
+        return None
+    parsed = urllib.parse.urlsplit(bridge_url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        raise RuntimeError("Media Bridge URL must be a plain HTTPS origin")
+    payload = json.dumps({"url": url}).encode("utf-8")
+    last_error = ""
+    for attempt in range(3):
+        request = urllib.request.Request(
+            f"{bridge_url}/extract", data=payload, method="POST",
+            headers={
+                "Authorization": f"Bearer {bridge_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "MyCodexAI-Music-Runner/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                contents = response.read(80 * 1024 * 1024 + 1)
+                title = urllib.parse.unquote(response.headers.get("X-Media-Title", ""))[:240]
+                duration = float(response.headers.get("X-Media-Duration", "0") or 0)
+                strategy = response.headers.get("X-Media-Strategy", "bridge")[:80]
+            if len(contents) < 1 or len(contents) > 80 * 1024 * 1024:
+                raise RuntimeError("Media Bridge returned an invalid audio size")
+            if duration < 2 or duration > 360:
+                raise RuntimeError("Media Bridge returned an invalid duration")
+            return contents, {
+                "type": platform, "video_id": source_id, "title": title or f"{platform.title()} {source_id}",
+                "url": url, "duration_seconds": round(duration, 2), "extraction_strategy": f"media-bridge/{strategy}",
+            }
+        except urllib.error.HTTPError as error:
+            last_error = f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:500]}"
+        except (OSError, ValueError, RuntimeError) as error:
+            last_error = str(error)[:500]
+        if attempt < 2:
+            time.sleep(10 * (attempt + 1))
+    raise RuntimeError(f"Media Bridge failed after 3 attempts: {last_error}")
+
+
 def download_media_source() -> tuple[bytes, dict[str, Any]]:
     prepared = _prepared_media_source()
     if prepared:
@@ -219,6 +262,12 @@ def download_media_source() -> tuple[bytes, dict[str, Any]]:
             "url": url, "duration_seconds": round(duration, 2), "extraction_strategy": strategy_name,
         }
 
+    try:
+        bridged = _download_from_media_bridge(url, platform, source_id)
+        if bridged:
+            return bridged
+    except RuntimeError as error:
+        diagnostics.append(f"media-bridge: {error}")
     detail = _classify_media_failure(platform, diagnostics)
     _report_media_diagnostics(diagnostics)
     if platform == "youtube":

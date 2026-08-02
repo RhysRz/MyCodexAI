@@ -198,6 +198,10 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "Preflight authorized social-video source" in workflow
     assert "cloud.runner.prepare_music_source" in workflow
     assert "PREPARED_AUDIO" in runner
+    assert "MUSIC_MEDIA_BRIDGE_URL" in workflow
+    assert "MUSIC_MEDIA_BRIDGE_KEY" in workflow
+    assert "_download_from_media_bridge" in runner
+    assert "media-bridge/" in runner
     assert "actions/setup-node@v6" in workflow
 
 
