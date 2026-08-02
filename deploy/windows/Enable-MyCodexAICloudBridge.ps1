@@ -43,7 +43,10 @@ foreach ($entry in $values.GetEnumerator()) {
     if ($index -ge 0) { $lines[$index] = $line } else { $lines.Add($line) }
 }
 $bridgeToken = $null
-$lines | Set-Content -LiteralPath $envFile -Encoding UTF8
+# Windows PowerShell 5.1 writes a UTF-8 BOM with Set-Content -Encoding UTF8.
+# python-dotenv treats that BOM as part of the first setting name, so write
+# explicit BOM-less UTF-8 to preserve APP_NAME and every existing setting.
+[IO.File]::WriteAllLines($envFile, $lines, [Text.UTF8Encoding]::new($false))
 Write-Host 'Cloud Bridge is configured. The token was stored only in the ignored local .env file.'
 
 if ($Restart) {

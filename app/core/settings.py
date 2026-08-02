@@ -139,6 +139,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
+        # Social login is optional. A partially entered provider must be
+        # treated as disabled instead of preventing the whole server from
+        # starting; the provider endpoint still requires both values.
+        if bool(self.oauth_google_client_id) != bool(self.oauth_google_client_secret):
+            self.oauth_google_client_id = ""
+            self.oauth_google_client_secret = ""
+        if bool(self.oauth_github_client_id) != bool(self.oauth_github_client_secret):
+            self.oauth_github_client_id = ""
+            self.oauth_github_client_secret = ""
         if self.cloud_bridge_enabled:
             bridge_url = urlparse(self.cloud_bridge_url)
             if bridge_url.scheme != "https" or not bridge_url.hostname:
@@ -163,10 +172,6 @@ class Settings(BaseSettings):
             errors.append("AUTH_MFA_ENCRYPTION_KEY must be set")
         if not self.auth_require_mfa_for_admin:
             errors.append("AUTH_REQUIRE_MFA_FOR_ADMIN must be true")
-        if bool(self.oauth_google_client_id) != bool(self.oauth_google_client_secret):
-            errors.append("OAuth Google client ID and secret must be configured together")
-        if bool(self.oauth_github_client_id) != bool(self.oauth_github_client_secret):
-            errors.append("OAuth GitHub client ID and secret must be configured together")
         if self.sandbox_mode.casefold() != "docker":
             errors.append("SANDBOX_MODE must be docker")
         if self.sandbox_allow_network:

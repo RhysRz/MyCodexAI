@@ -7,9 +7,22 @@ param(
 $ErrorActionPreference = 'Stop'
 $python = Join-Path $ProjectRoot 'venv\Scripts\python.exe'
 $logDirectory = Join-Path $ProjectRoot '.mycodexai\logs'
+$envFile = Join-Path $ProjectRoot '.env'
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "MyCodexAI Python runtime was not found at $python"
+}
+
+# Windows PowerShell 5.1 may add a UTF-8 BOM when another setup script updates
+# .env. python-dotenv then sees the BOM as part of the first key. Remove only
+# those three marker bytes and leave every setting value untouched.
+if (Test-Path -LiteralPath $envFile -PathType Leaf) {
+    $envBytes = [IO.File]::ReadAllBytes($envFile)
+    if ($envBytes.Length -ge 3 -and $envBytes[0] -eq 0xEF -and $envBytes[1] -eq 0xBB -and $envBytes[2] -eq 0xBF) {
+        $cleanBytes = New-Object byte[] ($envBytes.Length - 3)
+        [Array]::Copy($envBytes, 3, $cleanBytes, 0, $cleanBytes.Length)
+        [IO.File]::WriteAllBytes($envFile, $cleanBytes)
+    }
 }
 
 $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1

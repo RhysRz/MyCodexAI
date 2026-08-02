@@ -62,7 +62,11 @@ class OAuthIdentity:
 class SocialAuthService:
     @classmethod
     def provider_status(cls) -> dict[str, bool]:
-        return {provider: cls._provider_config(provider).client_id != "" for provider in SUPPORTED_PROVIDERS}
+        return {
+            provider: bool(config.client_id and config.client_secret)
+            for provider in SUPPORTED_PROVIDERS
+            for config in [cls._provider_config(provider)]
+        }
 
     @classmethod
     def begin_login(cls, provider: str, callback_origin: str) -> tuple[str, str]:
