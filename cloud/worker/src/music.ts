@@ -3,6 +3,8 @@ import { audit, epochSeconds, errorJson, json, readJson, safeEqual, secure } fro
 
 interface MusicPayload {
   file_id?: string;
+  youtube_url?: string;
+  rights_confirmed?: boolean;
 }
 
 interface MusicCallbackPayload {
@@ -33,6 +35,23 @@ const ARTIFACTS = new Set([
   "stem_vocals", "stem_drums", "stem_bass", "stem_guitar", "stem_piano", "stem_other",
 ]);
 const USER_DAILY_LIMIT = 3;
+
+function canonicalYouTubeUrl(value: string): { url: string; videoId: string } | null {
+  if (!value || value.length > 500) return null;
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { return null; }
+  if (parsed.protocol !== "https:") return null;
+  const host = parsed.hostname.toLocaleLowerCase().replace(/\.$/, "");
+  let videoId = "";
+  if (host === "youtu.be") {
+    videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+  } else if (["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) {
+    if (parsed.pathname === "/watch") videoId = parsed.searchParams.get("v") || "";
+    else if (/^\/(shorts|live)\//.test(parsed.pathname)) videoId = parsed.pathname.split("/")[2] || "";
+  }
+  if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) return null;
+  return { url: `https://www.youtube.com/watch?v=${videoId}`, videoId };
+}
 
 function bearer(request: Request): string {
   const authorization = request.headers.get("Authorization") || "";
@@ -97,13 +116,10 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
   if (!context.user) return errorJson("ต้องเข้าสู่ระบบ", 401);
   const payload = await readJson<MusicPayload>(context.request, 8_000);
   const fileId = String(payload.file_id || "").trim();
-  const file = await context.env.DB.prepare(
-    "SELECT id, name, size_bytes, status FROM cloud_files WHERE id = ? AND user_id = ? AND expires_at > ?",
-  ).bind(fileId, context.user.id, epochSeconds()).first<{ id: string; name: string; size_bytes: number; status: string }>();
-  if (!file || file.status !== "ready") return errorJson("ไม่พบไฟล์ที่พร้อมประมวลผล", 404);
-  if (!ALLOWED_SUFFIXES.some((suffix) => file.name.toLocaleLowerCase().endsWith(suffix))) {
-    return errorJson("Music Lab รองรับ PDF, WAV, MP3, FLAC, M4A, AAC และ OGG", 400);
-  }
+  const youtube = canonicalYouTubeUrl(String(payload.youtube_url || "").trim());
+  if (payload.youtube_url && !youtube) return errorJson("ลิงก์ YouTube ไม่ถูกต้อง หรือไม่ใช่วิดีโอเดี่ยว", 400);
+  if (youtube && payload.rights_confirmed !== true) return errorJson("กรุณายืนยันว่าคุณมีสิทธิ์ใช้เสียงจากวิดีโอนี้", 400);
+  if (!fileId && !youtube) return errorJson("กรุณาเลือกไฟล์หรือใส่ลิงก์ YouTube", 400);
   if (context.user.role !== "admin") {
     const now = epochSeconds();
     const count = await context.env.DB.prepare(
@@ -113,6 +129,23 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
   }
   if (!context.env.GITHUB_TOKEN || !context.env.GITHUB_OWNER || !context.env.GITHUB_REPO) {
     return errorJson("ยังไม่ได้เชื่อม GitHub Runner", 503);
+  }
+  let file: { id: string; name: string; size_bytes: number; status: string } | null = null;
+  if (youtube) {
+    file = { id: crypto.randomUUID(), name: `YouTube-${youtube.videoId}.wav`, size_bytes: 0, status: "ready" };
+    const timestamp = epochSeconds();
+    await context.env.DB.prepare(
+      `INSERT INTO cloud_files (id, user_id, name, media_type, size_bytes, chunk_count, status, created_at, expires_at)
+       VALUES (?, ?, ?, 'application/x-mycodexai-youtube', 0, 0, 'ready', ?, ?)`,
+    ).bind(file.id, context.user.id, file.name, timestamp, timestamp + 7 * 86_400).run();
+  } else {
+    file = await context.env.DB.prepare(
+      "SELECT id, name, size_bytes, status FROM cloud_files WHERE id = ? AND user_id = ? AND expires_at > ?",
+    ).bind(fileId, context.user.id, epochSeconds()).first<{ id: string; name: string; size_bytes: number; status: string }>();
+    if (!file || file.status !== "ready") return errorJson("ไม่พบไฟล์ที่พร้อมประมวลผล", 404);
+    if (!ALLOWED_SUFFIXES.some((suffix) => file!.name.toLocaleLowerCase().endsWith(suffix))) {
+      return errorJson("Music Lab รองรับ PDF, WAV, MP3, FLAC, M4A, AAC และ OGG", 400);
+    }
   }
   const id = crypto.randomUUID();
   const now = epochSeconds();
@@ -128,7 +161,7 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
       "User-Agent": "MyCodexAI-Cloud/1.0",
       "X-GitHub-Api-Version": "2026-03-10",
     },
-    body: JSON.stringify({ event_type: "mycodexai-music", client_payload: { job_id: id, file_id: file.id, file_name: file.name, user_id: context.user.id } }),
+    body: JSON.stringify({ event_type: "mycodexai-music", client_payload: { job_id: id, file_id: file.id, file_name: file.name, user_id: context.user.id, youtube_url: youtube?.url || "" } }),
   });
   if (!response.ok) {
     await context.env.DB.prepare(
@@ -138,7 +171,7 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
     return errorJson("ส่งงาน Music Lab ไม่สำเร็จ กรุณาลองใหม่", 503);
   }
   await context.env.DB.prepare("UPDATE music_jobs SET status = 'dispatched', updated_at = ? WHERE id = ?").bind(epochSeconds(), id).run();
-  await audit(context.env, context.user.id, "music_dispatched", "ok", `job=${id}; file=${file.id}`);
+  await audit(context.env, context.user.id, "music_dispatched", "ok", `job=${id}; source=${youtube ? "youtube" : "file"}`);
   const row = await ownedJob(context, id);
   return json(await publicJob(context, row!), 202);
 }

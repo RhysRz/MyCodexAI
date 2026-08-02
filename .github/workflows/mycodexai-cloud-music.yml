@@ -10,13 +10,16 @@ on:
         required: true
       file_id:
         description: Cloud attachment ID
-        required: true
+        required: false
       file_name:
         description: Source filename
         required: true
       user_id:
         description: Cloud user ID
         required: true
+      youtube_url:
+        description: Optional authorized public YouTube video URL
+        required: false
 
 concurrency:
   group: mycodexai-cloud-heavy
@@ -36,6 +39,7 @@ jobs:
       MYCODEXAI_MUSIC_FILE_ID: ${{ github.event.client_payload.file_id || inputs.file_id }}
       MYCODEXAI_MUSIC_FILE_NAME: ${{ github.event.client_payload.file_name || inputs.file_name }}
       MYCODEXAI_MUSIC_USER_ID: ${{ github.event.client_payload.user_id || inputs.user_id }}
+      MYCODEXAI_MUSIC_YOUTUBE_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
       MUSIC_OMR_EXECUTABLE: /opt/audiveris/bin/Audiveris
       MUSIC_FFMPEG_EXECUTABLE: ffmpeg
       MUSIC_DEMUCS_MODEL: htdemucs_6s
@@ -51,9 +55,20 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-music-advanced.txt
+            requirements-music-youtube.txt
 
       - name: Install project dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Set up JavaScript runtime for YouTube extraction
+        if: env.MYCODEXAI_MUSIC_YOUTUBE_URL != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install pinned YouTube extractor
+        if: env.MYCODEXAI_MUSIC_YOUTUBE_URL != ''
+        run: python -m pip install --disable-pip-version-check -r requirements-music-youtube.txt
 
       - name: Cache Music AI models
         if: ${{ !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.pdf') && !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.PDF') }}
@@ -146,7 +161,7 @@ jobs:
               data=json.dumps({
                   "job_id": os.environ["MYCODEXAI_MUSIC_JOB_ID"],
                   "status": "failed",
-                  "error_detail": "GitHub Runner เตรียมระบบ OMR ไม่สำเร็จ กรุณาเปิด Actions log หรือลองใหม่",
+                  "error_detail": "GitHub Runner เตรียม Music Lab ไม่สำเร็จ กรุณาเปิด Actions log หรือลองใหม่",
               }, ensure_ascii=False).encode("utf-8"),
               method="POST",
               headers={

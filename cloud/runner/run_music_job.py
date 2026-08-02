@@ -6,7 +6,9 @@ import base64
 from dataclasses import dataclass
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -20,6 +22,7 @@ JOB_ID = os.environ["MYCODEXAI_MUSIC_JOB_ID"]
 FILE_ID = os.environ["MYCODEXAI_MUSIC_FILE_ID"]
 FILE_NAME = Path(os.environ.get("MYCODEXAI_MUSIC_FILE_NAME", "music.pdf")).name
 USER_ID = os.environ["MYCODEXAI_MUSIC_USER_ID"]
+YOUTUBE_URL = os.environ.get("MYCODEXAI_MUSIC_YOUTUBE_URL", "").strip()
 CLOUD_URL = os.environ["MYCODEXAI_CLOUD_URL"].rstrip("/")
 RUNNER_SECRET = os.environ["MYCODEXAI_RUNNER_SECRET"]
 STATE_ROOT = ROOT / ".mycodexai-music-job" / "runs"
@@ -83,6 +86,64 @@ def download_source() -> bytes:
     return contents
 
 
+def canonical_youtube_url(value: str) -> tuple[str, str]:
+    """Defense-in-depth: the runner never sends yt-dlp an arbitrary URL."""
+    parsed = urllib.parse.urlparse(value)
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    video_id = ""
+    if parsed.scheme == "https" and host == "youtu.be":
+        video_id = parsed.path.strip("/").split("/")[0]
+    elif parsed.scheme == "https" and host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}:
+        if parsed.path == "/watch":
+            video_id = urllib.parse.parse_qs(parsed.query).get("v", [""])[0]
+        elif re.fullmatch(r"/(shorts|live)/[A-Za-z0-9_-]{6,20}/?", parsed.path):
+            video_id = parsed.path.strip("/").split("/")[1]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", video_id):
+        raise RuntimeError("YouTube URL failed runner validation")
+    return f"https://www.youtube.com/watch?v={video_id}", video_id
+
+
+def download_youtube_source() -> tuple[bytes, dict[str, Any]]:
+    url, video_id = canonical_youtube_url(YOUTUBE_URL)
+    yt_dlp = [sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist", "--no-warnings", "--socket-timeout", "20", "--retries", "2"]
+    inspected = subprocess.run(
+        [*yt_dlp, "--dump-single-json", "--skip-download", url],
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    if inspected.returncode != 0:
+        raise RuntimeError("ไม่สามารถอ่านวิดีโอ YouTube นี้ได้ อาจเป็นวิดีโอส่วนตัว จำกัดประเทศ หรือ YouTube ปฏิเสธ Runner")
+    try:
+        metadata = json.loads(inspected.stdout)
+        duration = float(metadata.get("duration") or 0)
+    except (ValueError, TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError("YouTube ไม่ส่งข้อมูลความยาววิดีโอที่อ่านได้") from error
+    if metadata.get("is_live") or metadata.get("live_status") in {"is_live", "is_upcoming", "post_live"}:
+        raise RuntimeError("Music Lab ไม่รองรับ YouTube Live")
+    if duration <= 1 or duration > 360:
+        raise RuntimeError("วิดีโอ YouTube ต้องยาวระหว่าง 2 วินาทีถึง 6 นาที")
+
+    download_root = ROOT / ".mycodexai-youtube-source"
+    download_root.mkdir(parents=True, exist_ok=True)
+    target = download_root / "youtube.%(ext)s"
+    completed = subprocess.run([
+        *yt_dlp, "--format", "bestaudio[filesize<=80M]/bestaudio", "--max-filesize", "80M",
+        "--extract-audio", "--audio-format", "wav", "--audio-quality", "0",
+        "--output", str(target), url,
+    ], capture_output=True, text=True, timeout=600, check=False)
+    candidates = sorted(download_root.glob("youtube*.wav"))
+    if completed.returncode != 0 or not candidates:
+        raise RuntimeError("ดาวน์โหลดเสียงจาก YouTube ไม่สำเร็จ อาจถูกจำกัดโดย YouTube กรุณาอัปโหลดไฟล์เสียงแทน")
+    with candidates[0].open("rb") as handle:
+        contents = handle.read(80 * 1024 * 1024 + 1)
+    if len(contents) > 80 * 1024 * 1024:
+        raise RuntimeError("เสียงจาก YouTube มีขนาดเกิน 80 MB หลังแปลง")
+    title = " ".join(str(metadata.get("title") or f"YouTube {video_id}").split())[:240]
+    return contents, {
+        "type": "youtube", "video_id": video_id, "title": title,
+        "url": url, "duration_seconds": round(duration, 2),
+    }
+
+
 def encoded_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, str]]:
     output: list[dict[str, str]] = []
     for kind in (
@@ -110,9 +171,18 @@ def main() -> int:
     callback("running")
     try:
         user = CloudMusicUser(USER_ID, "cloud-music-user", "user")
-        track = MusicService.create(user, FILE_NAME, download_source())
+        youtube_metadata: dict[str, Any] | None = None
+        if YOUTUBE_URL:
+            source_contents, youtube_metadata = download_youtube_source()
+            source_name = f"youtube-{youtube_metadata['video_id']}.wav"
+        else:
+            source_contents, source_name = download_source(), FILE_NAME
+        track = MusicService.create(user, source_name, source_contents)
         music_id = str(track["music_id"])
         analysis = MusicService.analyze(user, music_id)
+        if youtube_metadata:
+            analysis["source"] = youtube_metadata
+            MusicService._write_json(MusicService._track_directory(user.id, music_id) / "analysis.json", analysis)
         callback("completed", analysis=analysis, artifacts=encoded_artifacts(user, music_id))
         print(f"Music analysis completed: {JOB_ID}")
         return 0
@@ -128,6 +198,9 @@ def main() -> int:
         expected = (ROOT / ".mycodexai-music-job").resolve()
         if job_root == expected and job_root.is_dir():
             shutil.rmtree(job_root)
+        youtube_root = (ROOT / ".mycodexai-youtube-source").resolve()
+        if youtube_root.is_dir() and youtube_root.parent == ROOT:
+            shutil.rmtree(youtube_root)
 
 
 if __name__ == "__main__":

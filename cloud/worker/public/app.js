@@ -377,7 +377,7 @@ async function loadMusicJobs() {
   data.jobs.forEach((job) => {
     if (!["completed", "failed"].includes(job.status)) active = true;
     const card = element("article", "item-card");
-    card.append(element("h3", "", job.file_name), statusBadge(job.status));
+    card.append(element("h3", "", job.analysis?.source?.title || job.file_name), statusBadge(job.status));
     if (job.analysis) card.append(element("p", "music-summary", compactMusicSummary(job.analysis)));
     if (job.error_detail) card.append(element("p", "error", job.error_detail));
     const actions = element("div", "item-actions");
@@ -586,7 +586,18 @@ $("#voice-input").addEventListener("click", listenThai);
 $("#file-picker").addEventListener("change", async (event) => { try { for (const file of event.target.files) await uploadFile(file); $("#upload-status").textContent = "อัปโหลดเรียบร้อย"; await loadFiles(); } catch (error) { toast(error.message); } finally { event.target.value = ""; } });
 $("#agent-form").addEventListener("submit", async (event) => { event.preventDefault(); const attachments = $$("#agent-files input:checked").map((node) => node.value); try { await api("/api/agent/runs", { method: "POST", body: JSON.stringify({ task: $("#agent-task").value, mode: $("#agent-mode").value, attachments }) }); $("#agent-task").value = ""; toast("ส่งงานเข้าคิวแล้ว"); await loadRuns(); } catch (error) { toast(error.message); } });
 $("#image-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await generateImage(); } catch (error) { toast(error.message); } });
-$("#music-form").addEventListener("submit", async (event) => { event.preventDefault(); const button = $("#start-music"); button.disabled = true; try { await api("/api/music/jobs", { method: "POST", body: JSON.stringify({ file_id: $("#music-file").value }) }); toast("ส่งงาน Music Lab เข้าคิวแล้ว"); await loadMusicJobs(); } catch (error) { toast(error.message); } finally { button.disabled = false; } });
+$("#music-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const button = $("#start-music");
+  const fileId = $("#music-file").value, youtubeUrl = $("#music-youtube-url").value.trim(), rightsConfirmed = $("#music-rights-confirmed").checked;
+  if (!fileId && !youtubeUrl) { toast("กรุณาเลือกไฟล์หรือใส่ลิงก์ YouTube"); return; }
+  if (youtubeUrl && !rightsConfirmed) { toast("กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube"); return; }
+  button.disabled = true;
+  try {
+    await api("/api/music/jobs", { method: "POST", body: JSON.stringify({ file_id: fileId, youtube_url: youtubeUrl, rights_confirmed: rightsConfirmed }) });
+    $("#music-youtube-url").value = ""; $("#music-rights-confirmed").checked = false;
+    toast("ส่งงาน Music Lab เข้าคิวแล้ว"); await loadMusicJobs();
+  } catch (error) { toast(error.message); } finally { button.disabled = false; }
+});
 $("#refresh-music").addEventListener("click", () => loadMusicJobs().catch((error) => toast(error.message)));
 $("#download-image").addEventListener("click", async () => { try { downloadBlob(await canvasPng(), "mycodex-image.png"); } catch (error) { toast(error.message); } });
 $("#export-canva").addEventListener("click", () => exportCanvaSvg().catch((error) => toast(error.message)));

@@ -1,0 +1,2 @@
+# Installed only for a YouTube-source Music Lab job on a disposable runner.
+yt-dlp[default]==2026.6.9

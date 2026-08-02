@@ -134,6 +134,9 @@ def test_cloud_parity_features_are_wired_and_role_aware() -> None:
 
 def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     music = (WORKER / "src" / "music.ts").read_text(encoding="utf-8")
+    files = (WORKER / "src" / "files.ts").read_text(encoding="utf-8")
+    page = (WORKER / "public" / "index.html").read_text(encoding="utf-8")
+    app = (WORKER / "public" / "app.js").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "mycodexai-cloud-music.yml").read_text(encoding="utf-8")
     runner = (ROOT / "cloud" / "runner" / "run_music_job.py").read_text(encoding="utf-8")
     assert 'event_type: "mycodexai-music"' in music
@@ -159,6 +162,19 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "basic-pitch==0.4.0" in workflow
     assert "MUSIC_ADVANCED_ENABLED=true" in workflow
     assert '"stem_vocals", "stem_drums"' in runner
+    assert "canonicalYouTubeUrl" in music
+    assert "rights_confirmed" in music
+    assert music.index("COUNT(*) AS count FROM music_jobs") < music.index("application/x-mycodexai-youtube")
+    assert 'youtube_url: youtube?.url || ""' in music
+    assert 'media_type !== "application/x-mycodexai-youtube"' in files
+    assert 'id="music-youtube-url"' in page
+    assert 'id="music-rights-confirmed"' in page
+    assert "กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube" in app
+    assert "canonical_youtube_url" in runner
+    assert '"--no-playlist"' in runner
+    assert "duration > 360" in runner
+    assert "yt-dlp[default]==2026.6.9" in (ROOT / "requirements-music-youtube.txt").read_text(encoding="utf-8")
+    assert "actions/setup-node@v6" in workflow
 
 
 def test_cloud_image_caption_is_composed_outside_the_model() -> None:
