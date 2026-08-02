@@ -27,4 +27,4 @@ RUN git init /opt/bgutil-ytdlp-pot-provider \
 
 COPY app.py ./app.py
 EXPOSE 7860
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--no-access-log"]
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-7860} --workers 1 --no-access-log"]

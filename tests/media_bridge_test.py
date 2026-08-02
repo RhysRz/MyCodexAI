@@ -29,3 +29,11 @@ def test_media_bridge_deployment_keeps_generated_key_out_of_output() -> None:
     assert 'api.add_space_secret(repo_id=SPACE_ID, key="MEDIA_BRIDGE_KEY"' in deployment
     assert 'set_github_secret("MYCODEXAI_MEDIA_BRIDGE_KEY"' in deployment
     assert "print(bridge_key)" not in deployment
+
+
+def test_render_blueprint_keeps_bridge_on_the_free_plan() -> None:
+    blueprint = (ROOT / "deploy" / "render" / "render.yaml").read_text(encoding="utf-8")
+    assert "runtime: docker" in blueprint
+    assert "plan: free" in blueprint
+    assert "healthCheckPath: /" in blueprint
+    assert "generateValue: true" in blueprint

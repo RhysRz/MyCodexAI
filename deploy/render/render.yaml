@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mycodexai-media-bridge
+    runtime: docker
+    plan: free
+    dockerContext: ../huggingface/media-bridge
+    dockerfilePath: ../huggingface/media-bridge/Dockerfile
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: MEDIA_BRIDGE_KEY
+        generateValue: true
