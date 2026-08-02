@@ -139,6 +139,7 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     app = (WORKER / "public" / "app.js").read_text(encoding="utf-8")
     workflow = (ROOT / ".github" / "workflows" / "mycodexai-cloud-music.yml").read_text(encoding="utf-8")
     runner = (ROOT / "cloud" / "runner" / "run_music_job.py").read_text(encoding="utf-8")
+    media_url = (ROOT / "cloud" / "runner" / "media_url.py").read_text(encoding="utf-8")
     assert 'event_type: "mycodexai-music"' in music
     assert "WHERE id = ? AND user_id = ?" in music
     assert "RUNNER_CALLBACK_SECRET" in music
@@ -162,18 +163,20 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "basic-pitch==0.4.0" in workflow
     assert "MUSIC_ADVANCED_ENABLED=true" in workflow
     assert '"stem_vocals", "stem_drums"' in runner
-    assert "canonicalYouTubeUrl" in music
+    assert "canonicalMediaUrl" in music
     assert "rights_confirmed" in music
-    assert music.index("COUNT(*) AS count FROM music_jobs") < music.index("application/x-mycodexai-youtube")
-    assert 'youtube_url: youtube?.url || ""' in music
-    assert 'media_type !== "application/x-mycodexai-youtube"' in files
-    assert 'id="music-youtube-url"' in page
+    assert music.index("COUNT(*) AS count FROM music_jobs") < music.index("application/x-mycodexai-media-url")
+    assert 'source_url: mediaSource?.url || ""' in music
+    assert '"vm.tiktok.com", "vt.tiktok.com"' in music
+    assert 'media_type.startsWith("application/x-mycodexai-")' in files
+    assert 'id="music-source-url"' in page
     assert 'id="music-rights-confirmed"' in page
-    assert "กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube" in app
-    assert "canonical_youtube_url" in runner
+    assert "กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube/TikTok" in app
+    assert "canonical_media_url" in runner
+    assert '"vm.tiktok.com", "vt.tiktok.com"' in media_url
     assert '"--no-playlist"' in runner
     assert "duration > 360" in runner
-    assert "yt-dlp[default]==2026.6.9" in (ROOT / "requirements-music-youtube.txt").read_text(encoding="utf-8")
+    assert "yt-dlp[default]==2026.6.9" in (ROOT / "requirements-music-social.txt").read_text(encoding="utf-8")
     assert "actions/setup-node@v6" in workflow
 
 

@@ -3,6 +3,7 @@ import { audit, epochSeconds, errorJson, json, readJson, safeEqual, secure } fro
 
 interface MusicPayload {
   file_id?: string;
+  source_url?: string;
   youtube_url?: string;
   rights_confirmed?: boolean;
 }
@@ -36,21 +37,35 @@ const ARTIFACTS = new Set([
 ]);
 const USER_DAILY_LIMIT = 3;
 
-function canonicalYouTubeUrl(value: string): { url: string; videoId: string } | null {
+function canonicalMediaUrl(value: string): { url: string; sourceId: string; platform: "youtube" | "tiktok" } | null {
   if (!value || value.length > 500) return null;
   let parsed: URL;
   try { parsed = new URL(value); } catch { return null; }
   if (parsed.protocol !== "https:") return null;
   const host = parsed.hostname.toLocaleLowerCase().replace(/\.$/, "");
-  let videoId = "";
+  let sourceId = "";
   if (host === "youtu.be") {
-    videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+    sourceId = parsed.pathname.split("/").filter(Boolean)[0] || "";
   } else if (["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) {
-    if (parsed.pathname === "/watch") videoId = parsed.searchParams.get("v") || "";
-    else if (/^\/(shorts|live)\//.test(parsed.pathname)) videoId = parsed.pathname.split("/")[2] || "";
+    if (parsed.pathname === "/watch") sourceId = parsed.searchParams.get("v") || "";
+    else if (/^\/(shorts|live)\//.test(parsed.pathname)) sourceId = parsed.pathname.split("/")[2] || "";
   }
-  if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId)) return null;
-  return { url: `https://www.youtube.com/watch?v=${videoId}`, videoId };
+  if (/^[A-Za-z0-9_-]{6,20}$/.test(sourceId)) {
+    return { url: `https://www.youtube.com/watch?v=${sourceId}`, sourceId, platform: "youtube" };
+  }
+  if (["vm.tiktok.com", "vt.tiktok.com"].includes(host)) {
+    sourceId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+    if (/^[A-Za-z0-9_-]{5,40}$/.test(sourceId)) {
+      return { url: `https://${host}/${sourceId}/`, sourceId, platform: "tiktok" };
+    }
+  }
+  if (["tiktok.com", "www.tiktok.com", "m.tiktok.com"].includes(host)) {
+    const video = parsed.pathname.match(/^\/@[A-Za-z0-9._-]{1,40}\/video\/(\d{8,30})\/?$/);
+    const mobile = parsed.pathname.match(/^\/v\/(\d{8,30})\.html$/);
+    sourceId = video?.[1] || mobile?.[1] || "";
+    if (sourceId) return { url: `https://${host}${parsed.pathname}`, sourceId, platform: "tiktok" };
+  }
+  return null;
 }
 
 function bearer(request: Request): string {
@@ -107,7 +122,7 @@ async function listJobs(context: RequestContext): Promise<Response> {
   return json({
     jobs,
     processing: "github-runner",
-    supported: ["PDF โน้ต/TAB/OMR", "WAV, MP3, FLAC, M4A, AAC และ OGG", "แยก stem 6 ชิ้น", "MusicXML และ Multitrack MIDI"],
+    supported: ["ลิงก์ YouTube และ TikTok", "PDF โน้ต/TAB/OMR", "WAV, MP3, FLAC, M4A, AAC และ OGG", "แยก stem 6 ชิ้น", "MusicXML และ Multitrack MIDI"],
     scanned_omr: true,
   });
 }
@@ -116,10 +131,11 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
   if (!context.user) return errorJson("ต้องเข้าสู่ระบบ", 401);
   const payload = await readJson<MusicPayload>(context.request, 8_000);
   const fileId = String(payload.file_id || "").trim();
-  const youtube = canonicalYouTubeUrl(String(payload.youtube_url || "").trim());
-  if (payload.youtube_url && !youtube) return errorJson("ลิงก์ YouTube ไม่ถูกต้อง หรือไม่ใช่วิดีโอเดี่ยว", 400);
-  if (youtube && payload.rights_confirmed !== true) return errorJson("กรุณายืนยันว่าคุณมีสิทธิ์ใช้เสียงจากวิดีโอนี้", 400);
-  if (!fileId && !youtube) return errorJson("กรุณาเลือกไฟล์หรือใส่ลิงก์ YouTube", 400);
+  const rawSourceUrl = String(payload.source_url || payload.youtube_url || "").trim();
+  const mediaSource = canonicalMediaUrl(rawSourceUrl);
+  if (rawSourceUrl && !mediaSource) return errorJson("ลิงก์ไม่ถูกต้อง กรุณาใช้วิดีโอเดี่ยวจาก YouTube หรือ TikTok", 400);
+  if (mediaSource && payload.rights_confirmed !== true) return errorJson("กรุณายืนยันว่าคุณมีสิทธิ์ใช้เสียงจากวิดีโอนี้", 400);
+  if (!fileId && !mediaSource) return errorJson("กรุณาเลือกไฟล์หรือใส่ลิงก์ YouTube/TikTok", 400);
   if (context.user.role !== "admin") {
     const now = epochSeconds();
     const count = await context.env.DB.prepare(
@@ -131,12 +147,12 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
     return errorJson("ยังไม่ได้เชื่อม GitHub Runner", 503);
   }
   let file: { id: string; name: string; size_bytes: number; status: string } | null = null;
-  if (youtube) {
-    file = { id: crypto.randomUUID(), name: `YouTube-${youtube.videoId}.wav`, size_bytes: 0, status: "ready" };
+  if (mediaSource) {
+    file = { id: crypto.randomUUID(), name: `${mediaSource.platform}-${mediaSource.sourceId}.wav`, size_bytes: 0, status: "ready" };
     const timestamp = epochSeconds();
     await context.env.DB.prepare(
       `INSERT INTO cloud_files (id, user_id, name, media_type, size_bytes, chunk_count, status, created_at, expires_at)
-       VALUES (?, ?, ?, 'application/x-mycodexai-youtube', 0, 0, 'ready', ?, ?)`,
+       VALUES (?, ?, ?, 'application/x-mycodexai-media-url', 0, 0, 'ready', ?, ?)`,
     ).bind(file.id, context.user.id, file.name, timestamp, timestamp + 7 * 86_400).run();
   } else {
     file = await context.env.DB.prepare(
@@ -161,7 +177,7 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
       "User-Agent": "MyCodexAI-Cloud/1.0",
       "X-GitHub-Api-Version": "2026-03-10",
     },
-    body: JSON.stringify({ event_type: "mycodexai-music", client_payload: { job_id: id, file_id: file.id, file_name: file.name, user_id: context.user.id, youtube_url: youtube?.url || "" } }),
+    body: JSON.stringify({ event_type: "mycodexai-music", client_payload: { job_id: id, file_id: file.id, file_name: file.name, user_id: context.user.id, source_url: mediaSource?.url || "", source_platform: mediaSource?.platform || "file" } }),
   });
   if (!response.ok) {
     await context.env.DB.prepare(
@@ -171,7 +187,7 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
     return errorJson("ส่งงาน Music Lab ไม่สำเร็จ กรุณาลองใหม่", 503);
   }
   await context.env.DB.prepare("UPDATE music_jobs SET status = 'dispatched', updated_at = ? WHERE id = ?").bind(epochSeconds(), id).run();
-  await audit(context.env, context.user.id, "music_dispatched", "ok", `job=${id}; source=${youtube ? "youtube" : "file"}`);
+  await audit(context.env, context.user.id, "music_dispatched", "ok", `job=${id}; source=${mediaSource?.platform || "file"}`);
   const row = await ownedJob(context, id);
   return json(await publicJob(context, row!), 202);
 }

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101113">
   <title>MyCodexAI Cloud</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/style.css?v=20260802-4">
+  <link rel="stylesheet" href="/style.css?v=20260802-5">
 </head>
 <body class="app-page">
   <button id="backdrop" class="backdrop hidden" aria-label="ปิดเมนู"></button>
@@ -90,16 +90,16 @@
     <section id="view-music" class="view">
       <div class="panel narrow">
         <p class="eyebrow">MUSIC LAB</p><h1>แกะเพลง, PDF, TAB และ OMR</h1>
-        <p class="muted">เลือกไฟล์ที่อัปโหลดไว้ หรือใส่ลิงก์ YouTube งานหนักจะประมวลผลบน GitHub Runner จึงไม่ใช้ CPU/RAM ของคอมคุณ</p>
+        <p class="muted">เลือกไฟล์ที่อัปโหลดไว้ หรือใส่ลิงก์ YouTube/TikTok งานหนักจะประมวลผลบน GitHub Runner จึงไม่ใช้ CPU/RAM ของคอมคุณ</p>
         <form id="music-form">
           <label>ไฟล์ต้นฉบับ (ไม่บังคับเมื่อใช้ YouTube)<select id="music-file"><option value="">เลือก PDF หรือไฟล์เสียง</option></select></label>
           <div class="source-divider"><span>หรือ</span></div>
-          <label>ลิงก์ YouTube<input id="music-youtube-url" type="url" inputmode="url" maxlength="500" placeholder="https://www.youtube.com/watch?v=..."></label>
+          <label>ลิงก์ YouTube หรือ TikTok<input id="music-source-url" type="url" inputmode="url" maxlength="500" placeholder="https://www.youtube.com/watch?v=... หรือ https://vt.tiktok.com/..."></label>
           <label class="rights-confirm"><input id="music-rights-confirmed" type="checkbox"><span>ฉันยืนยันว่ามีสิทธิ์ใช้เนื้อหานี้ และจะใช้เพื่อการศึกษา/งานที่ได้รับอนุญาต</span></label>
-          <p class="muted tiny">รองรับวิดีโอเดี่ยวแบบสาธารณะ ความยาวไม่เกิน 6 นาที · ไม่รองรับ Playlist, Live, วิดีโอส่วนตัว หรือเนื้อหาที่ต้องเข้าสู่ระบบ</p>
+          <p class="muted tiny">รองรับวิดีโอเดี่ยวแบบสาธารณะจาก YouTube/TikTok ความยาวไม่เกิน 6 นาที · ไม่รองรับ Playlist, Live, วิดีโอส่วนตัว หรือเนื้อหาที่ต้องเข้าสู่ระบบ</p>
           <button id="start-music" class="primary" type="submit">เริ่มวิเคราะห์</button>
         </form>
-        <div class="capability-note"><strong>Advanced Music Lab</strong><p>รองรับ YouTube, WAV, MP3, FLAC, M4A, AAC, OGG และ PDF · แยกเสียงร้อง/กลอง/เบส/กีตาร์/เปียโน/เสียงอื่น · ถอดโน้ตแยกเครื่อง · ส่งออก MusicXML, Multitrack MIDI, คอร์ด และ TAB · อ่าน PDF สแกนด้วย OMR</p></div>
+        <div class="capability-note"><strong>Advanced Music Lab</strong><p>รองรับ YouTube, TikTok, WAV, MP3, FLAC, M4A, AAC, OGG และ PDF · แยกเสียงร้อง/กลอง/เบส/กีตาร์/เปียโน/เสียงอื่น · ถอดโน้ตแยกเครื่อง · ส่งออก MusicXML, Multitrack MIDI, คอร์ด และ TAB · อ่าน PDF สแกนด้วย OMR</p></div>
       </div>
       <div class="panel"><div class="section-title"><h2>งาน Music Lab</h2><button id="refresh-music" class="secondary">โหลดใหม่</button></div><div id="music-list" class="card-list"></div></div>
     </section>
@@ -167,6 +167,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="/app.js?v=20260802-4" defer></script>
+  <script src="/app.js?v=20260802-5" defer></script>
 </body>
 </html>

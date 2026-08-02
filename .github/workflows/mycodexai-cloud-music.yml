@@ -17,8 +17,8 @@ on:
       user_id:
         description: Cloud user ID
         required: true
-      youtube_url:
-        description: Optional authorized public YouTube video URL
+      source_url:
+        description: Optional authorized public YouTube or TikTok video URL
         required: false
 
 concurrency:
@@ -39,7 +39,7 @@ jobs:
       MYCODEXAI_MUSIC_FILE_ID: ${{ github.event.client_payload.file_id || inputs.file_id }}
       MYCODEXAI_MUSIC_FILE_NAME: ${{ github.event.client_payload.file_name || inputs.file_name }}
       MYCODEXAI_MUSIC_USER_ID: ${{ github.event.client_payload.user_id || inputs.user_id }}
-      MYCODEXAI_MUSIC_YOUTUBE_URL: ${{ github.event.client_payload.youtube_url || inputs.youtube_url }}
+      MYCODEXAI_MUSIC_SOURCE_URL: ${{ github.event.client_payload.source_url || inputs.source_url }}
       MUSIC_OMR_EXECUTABLE: /opt/audiveris/bin/Audiveris
       MUSIC_FFMPEG_EXECUTABLE: ffmpeg
       MUSIC_DEMUCS_MODEL: htdemucs_6s
@@ -55,20 +55,20 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-music-advanced.txt
-            requirements-music-youtube.txt
+            requirements-music-social.txt
 
       - name: Install project dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
-      - name: Set up JavaScript runtime for YouTube extraction
-        if: env.MYCODEXAI_MUSIC_YOUTUBE_URL != ''
+      - name: Set up JavaScript runtime for social-video extraction
+        if: env.MYCODEXAI_MUSIC_SOURCE_URL != ''
         uses: actions/setup-node@v6
         with:
           node-version: "24"
 
-      - name: Install pinned YouTube extractor
-        if: env.MYCODEXAI_MUSIC_YOUTUBE_URL != ''
-        run: python -m pip install --disable-pip-version-check -r requirements-music-youtube.txt
+      - name: Install pinned social-video extractor
+        if: env.MYCODEXAI_MUSIC_SOURCE_URL != ''
+        run: python -m pip install --disable-pip-version-check -r requirements-music-social.txt
 
       - name: Cache Music AI models
         if: ${{ !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.pdf') && !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.PDF') }}

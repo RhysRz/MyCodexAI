@@ -113,7 +113,7 @@ async function listFiles(context: RequestContext): Promise<Response> {
   const rows = await context.env.DB.prepare(
     "SELECT * FROM cloud_files WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 50",
   ).bind(context.user.id, epochSeconds()).all<CloudFileRow>();
-  return json({ files: (rows.results || []).filter((row) => row.media_type !== "application/x-mycodexai-youtube").map(publicFile), chunk_bytes: CHUNK_BYTES, max_file_bytes: MAX_FILE_BYTES });
+  return json({ files: (rows.results || []).filter((row) => !row.media_type.startsWith("application/x-mycodexai-")).map(publicFile), chunk_bytes: CHUNK_BYTES, max_file_bytes: MAX_FILE_BYTES });
 }
 
 async function deleteFile(context: RequestContext, id: string): Promise<Response> {

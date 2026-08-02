@@ -588,13 +588,13 @@ $("#agent-form").addEventListener("submit", async (event) => { event.preventDefa
 $("#image-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await generateImage(); } catch (error) { toast(error.message); } });
 $("#music-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const button = $("#start-music");
-  const fileId = $("#music-file").value, youtubeUrl = $("#music-youtube-url").value.trim(), rightsConfirmed = $("#music-rights-confirmed").checked;
-  if (!fileId && !youtubeUrl) { toast("กรุณาเลือกไฟล์หรือใส่ลิงก์ YouTube"); return; }
-  if (youtubeUrl && !rightsConfirmed) { toast("กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube"); return; }
+  const fileId = $("#music-file").value, sourceUrl = $("#music-source-url").value.trim(), rightsConfirmed = $("#music-rights-confirmed").checked;
+  if (!fileId && !sourceUrl) { toast("กรุณาเลือกไฟล์หรือใส่ลิงก์ YouTube/TikTok"); return; }
+  if (sourceUrl && !rightsConfirmed) { toast("กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube/TikTok"); return; }
   button.disabled = true;
   try {
-    await api("/api/music/jobs", { method: "POST", body: JSON.stringify({ file_id: fileId, youtube_url: youtubeUrl, rights_confirmed: rightsConfirmed }) });
-    $("#music-youtube-url").value = ""; $("#music-rights-confirmed").checked = false;
+    await api("/api/music/jobs", { method: "POST", body: JSON.stringify({ file_id: fileId, source_url: sourceUrl, rights_confirmed: rightsConfirmed }) });
+    $("#music-source-url").value = ""; $("#music-rights-confirmed").checked = false;
     toast("ส่งงาน Music Lab เข้าคิวแล้ว"); await loadMusicJobs();
   } catch (error) { toast(error.message); } finally { button.disabled = false; }
 });
