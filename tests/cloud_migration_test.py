@@ -181,6 +181,17 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert '"--no-playlist"' in runner
     assert "duration > 360" in runner
     assert "yt-dlp[default]==2026.6.9" in (ROOT / "requirements-music-social.txt").read_text(encoding="utf-8")
+    assert "bgutil-ytdlp-pot-provider==1.3.1" in (ROOT / "requirements-music-social.txt").read_text(encoding="utf-8")
+    assert "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0" in workflow
+    assert "MUSIC_YTDLP_POT_PROVIDER_HOME" in workflow
+    assert "youtube:player_client=web_embedded" in runner
+    assert "youtube:player_client=mweb" in runner
+    assert "youtubepot-bgutilscript:server_home=" in runner
+    assert "RetryableMediaError" in runner
+    assert "payload.retryable === true" in music
+    assert "MAX_SOURCE_ATTEMPTS = 2" in music
+    assert 'job.status === "running"' in music
+    assert '"music_runner_retry"' in music
     assert "actions/setup-node@v6" in workflow
 
 

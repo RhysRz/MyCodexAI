@@ -16,6 +16,7 @@ interface MusicCallbackPayload {
   analysis?: unknown;
   artifacts?: Array<{ kind?: string; file_name?: string; media_type?: string; contents_base64?: string }>;
   error_detail?: string;
+  retryable?: boolean;
 }
 
 interface MusicJobRow {
@@ -42,6 +43,7 @@ const ARTIFACTS = new Set([
   "stem_vocals", "stem_drums", "stem_bass", "stem_guitar", "stem_piano", "stem_other",
 ]);
 const USER_DAILY_LIMIT = 3;
+const MAX_SOURCE_ATTEMPTS = 2;
 
 function canonicalMediaUrl(value: string): { url: string; sourceId: string; platform: "youtube" | "tiktok" } | null {
   if (!value || value.length > 500) return null;
@@ -206,6 +208,32 @@ async function callback(context: RequestContext): Promise<Response> {
   if (!CALLBACK_STATUSES.has(status)) return errorJson("สถานะ Music job ไม่ถูกต้อง", 400);
   const job = await context.env.DB.prepare("SELECT * FROM music_jobs WHERE id = ?").bind(id).first<MusicJobRow>();
   if (!job) return errorJson("ไม่พบ Music job", 404);
+  let errorDetail = String(payload.error_detail || "").slice(0, 3_000);
+  if (
+    status === "failed"
+    && payload.retryable === true
+    && job.source_platform === "youtube"
+    && job.status === "running"
+    && Number(job.attempt_count || 0) < MAX_SOURCE_ATTEMPTS
+  ) {
+    const now = epochSeconds();
+    const nextAttempt = Number(job.attempt_count || 0) + 1;
+    const retryDetail = `YouTube ปฏิเสธ Cloud Runner รอบก่อน กำลังย้ายไป Runner ใหม่อัตโนมัติ (รอบ ${nextAttempt}/${MAX_SOURCE_ATTEMPTS})`;
+    await context.env.DB.prepare(
+      "UPDATE music_jobs SET status = 'queued', progress = 5, error_detail = ?, updated_at = ?, completed_at = NULL WHERE id = ?",
+    ).bind(retryDetail, now, id).run();
+    try {
+      await context.env.AGENT_QUEUE.send({ kind: "music", jobId: id });
+      await audit(context.env, job.user_id, "music_runner_retry", "queued", `job=${id}; attempt=${nextAttempt}`);
+      context.execution.waitUntil(publishEvent(context.env, job.user_id, {
+        type: "music_progress", title: "YouTube ปฏิเสธ Runner · กำลังลองเครื่องใหม่", resource_id: id,
+        status: "queued", progress: 5, action_url: "/?view=music",
+      }));
+      return json({ status: "retrying", attempt: nextAttempt, maximum_attempts: MAX_SOURCE_ATTEMPTS });
+    } catch {
+      errorDetail = `${errorDetail || "YouTube ปฏิเสธ Cloud Runner"} และส่งงานลองใหม่เข้าคิวไม่สำเร็จ`.slice(0, 3_000);
+    }
+  }
   const artifacts = Array.isArray(payload.artifacts) ? payload.artifacts.slice(0, 16) : [];
   let totalBytes = 0;
   const statements: D1PreparedStatement[] = [];
@@ -228,7 +256,7 @@ async function callback(context: RequestContext): Promise<Response> {
     status,
     status === "completed" || status === "failed" ? 100 : 55,
     payload.analysis ? JSON.stringify(payload.analysis).slice(0, 1_000_000) : job.analysis_json,
-    String(payload.error_detail || "").slice(0, 3_000) || null,
+    errorDetail || null,
     now,
     status === "completed" || status === "failed" ? now : null,
     id,
@@ -237,7 +265,7 @@ async function callback(context: RequestContext): Promise<Response> {
   if (status === "completed" || status === "failed") {
     context.execution.waitUntil(notifyUser(context.env, job.user_id, {
       type: "music_complete", title: status === "completed" ? "Music Lab วิเคราะห์เสร็จแล้ว" : "Music Lab ทำงานไม่สำเร็จ",
-      detail: status === "completed" ? job.file_name : String(payload.error_detail || "").slice(0, 500),
+      detail: status === "completed" ? job.file_name : errorDetail.slice(0, 500),
       resource_id: id, status, progress: 100, action_url: "/?view=music",
     }));
   } else {

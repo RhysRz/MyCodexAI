@@ -51,6 +51,10 @@ class CloudMusicUser:
     role: str
 
 
+class RetryableMediaError(RuntimeError):
+    """A social-video failure that may succeed from a fresh hosted runner."""
+
+
 def request_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     request = urllib.request.Request(
         f"{CLOUD_URL}{path}",
@@ -86,19 +90,40 @@ def download_source() -> bytes:
     return contents
 
 
-def download_media_source() -> tuple[bytes, dict[str, Any]]:
-    url, platform, source_id = canonical_media_url(SOURCE_URL)
-    yt_dlp = [sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist", "--no-warnings", "--socket-timeout", "20", "--retries", "2"]
-    inspected = subprocess.run(
-        [*yt_dlp, "--dump-single-json", "--skip-download", url],
-        capture_output=True, text=True, timeout=120, check=False,
-    )
-    if inspected.returncode != 0:
-        raise RuntimeError(f"ไม่สามารถอ่านวิดีโอ {platform.title()} นี้ได้ อาจเป็นวิดีโอส่วนตัว จำกัดประเทศ หรือแพลตฟอร์มปฏิเสธ Runner")
+def _media_strategies(platform: str) -> list[tuple[str, list[str]]]:
+    if platform != "youtube":
+        return [("default", [])]
+    strategies: list[tuple[str, list[str]]] = [
+        ("default", []),
+        ("web-embedded", ["--extractor-args", "youtube:player_client=web_embedded"]),
+    ]
+    provider_home = os.environ.get("MUSIC_YTDLP_POT_PROVIDER_HOME", "").strip()
+    if provider_home:
+        strategies.append(("mweb-pot", [
+            "--extractor-args", "youtube:player_client=mweb",
+            "--extractor-args", f"youtubepot-bgutilscript:server_home={provider_home}",
+        ]))
+    return strategies
+
+
+def _classify_media_failure(platform: str, diagnostics: list[str]) -> str:
+    combined = "\n".join(diagnostics).casefold()
+    label = platform.title()
+    if any(marker in combined for marker in ("sign in to confirm", "not a bot", "login_required", "po token", "http error 403")):
+        return f"{label} ปฏิเสธ IP ของ Cloud Runner แม้ลอง client สำรองและ PO Token แล้ว ระบบจะลอง Runner ใหม่อัตโนมัติ"
+    if any(marker in combined for marker in ("private video", "members-only", "join this channel")):
+        return f"วิดีโอ {label} นี้เป็นวิดีโอส่วนตัวหรือจำกัดสมาชิก"
+    if any(marker in combined for marker in ("not available in your country", "geo", "region")):
+        return f"วิดีโอ {label} นี้จำกัดประเทศของ Cloud Runner"
+    if "copyright" in combined:
+        return f"{label} จำกัดการเข้าถึงวิดีโอนี้ด้วยเงื่อนไขลิขสิทธิ์"
+    return f"{label} ไม่ยอมส่งข้อมูลเสียงให้ Cloud Runner หลังลองตัวอ่านทุกแบบแล้ว ระบบจะลอง Runner ใหม่อัตโนมัติ"
+
+
+def _validate_media_metadata(metadata: dict[str, Any], platform: str) -> float:
     try:
-        metadata = json.loads(inspected.stdout)
         duration = float(metadata.get("duration") or 0)
-    except (ValueError, TypeError, json.JSONDecodeError) as error:
+    except (ValueError, TypeError) as error:
         raise RuntimeError("แพลตฟอร์มไม่ส่งข้อมูลความยาววิดีโอที่อ่านได้") from error
     extractor = str(metadata.get("extractor_key") or metadata.get("extractor") or "").casefold()
     if platform not in extractor:
@@ -107,28 +132,62 @@ def download_media_source() -> tuple[bytes, dict[str, Any]]:
         raise RuntimeError("Music Lab ไม่รองรับวิดีโอ Live")
     if duration <= 1 or duration > 360:
         raise RuntimeError("วิดีโอต้องยาวระหว่าง 2 วินาทีถึง 6 นาที")
+    return duration
 
+
+def download_media_source() -> tuple[bytes, dict[str, Any]]:
+    url, platform, source_id = canonical_media_url(SOURCE_URL)
+    yt_dlp = [
+        sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist",
+        "--force-ipv4", "--js-runtimes", "node", "--socket-timeout", "20", "--retries", "2",
+    ]
     download_root = ROOT / ".mycodexai-media-source"
     download_root.mkdir(parents=True, exist_ok=True)
     target = download_root / "media.%(ext)s"
-    completed = subprocess.run([
-        *yt_dlp, "--format", "bestaudio[filesize<=80M]/bestaudio", "--max-filesize", "80M",
-        "--extract-audio", "--audio-format", "wav", "--audio-quality", "0",
-        "--output", str(target), url,
-    ], capture_output=True, text=True, timeout=600, check=False)
-    candidates = sorted(download_root.glob("media*.wav"))
-    if completed.returncode != 0 or not candidates:
-        raise RuntimeError(f"ดาวน์โหลดเสียงจาก {platform.title()} ไม่สำเร็จ อาจถูกแพลตฟอร์มจำกัด กรุณาอัปโหลดไฟล์เสียงแทน")
-    with candidates[0].open("rb") as handle:
-        contents = handle.read(80 * 1024 * 1024 + 1)
-    if len(contents) > 80 * 1024 * 1024:
-        raise RuntimeError("เสียงจากวิดีโอมีขนาดเกิน 80 MB หลังแปลง")
-    extracted_id = re.sub(r"[^A-Za-z0-9_-]", "", str(metadata.get("id") or ""))[:40] or source_id
-    title = " ".join(str(metadata.get("title") or f"{platform.title()} {extracted_id}").split())[:240]
-    return contents, {
-        "type": platform, "video_id": extracted_id, "title": title,
-        "url": url, "duration_seconds": round(duration, 2),
-    }
+    diagnostics: list[str] = []
+
+    for strategy_name, strategy_args in _media_strategies(platform):
+        inspected = subprocess.run(
+            [*yt_dlp, *strategy_args, "--dump-single-json", "--skip-download", url],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+        if inspected.returncode != 0:
+            diagnostics.append(f"{strategy_name}: {inspected.stderr[-4_000:]}")
+            continue
+        try:
+            metadata = json.loads(inspected.stdout)
+        except json.JSONDecodeError:
+            diagnostics.append(f"{strategy_name}: invalid metadata response")
+            continue
+        duration = _validate_media_metadata(metadata, platform)
+        for old_candidate in download_root.glob("media*"):
+            if old_candidate.is_file():
+                old_candidate.unlink()
+        completed = subprocess.run([
+            *yt_dlp, *strategy_args,
+            "--format", "bestaudio[filesize<=80M]/bestaudio", "--max-filesize", "80M",
+            "--extract-audio", "--audio-format", "wav", "--audio-quality", "0",
+            "--output", str(target), url,
+        ], capture_output=True, text=True, timeout=600, check=False)
+        candidates = sorted(download_root.glob("media*.wav"))
+        if completed.returncode != 0 or not candidates:
+            diagnostics.append(f"{strategy_name}: {completed.stderr[-4_000:]}")
+            continue
+        with candidates[0].open("rb") as handle:
+            contents = handle.read(80 * 1024 * 1024 + 1)
+        if len(contents) > 80 * 1024 * 1024:
+            raise RuntimeError("เสียงจากวิดีโอมีขนาดเกิน 80 MB หลังแปลง")
+        extracted_id = re.sub(r"[^A-Za-z0-9_-]", "", str(metadata.get("id") or ""))[:40] or source_id
+        title = " ".join(str(metadata.get("title") or f"{platform.title()} {extracted_id}").split())[:240]
+        return contents, {
+            "type": platform, "video_id": extracted_id, "title": title,
+            "url": url, "duration_seconds": round(duration, 2), "extraction_strategy": strategy_name,
+        }
+
+    detail = _classify_media_failure(platform, diagnostics)
+    if platform == "youtube":
+        raise RetryableMediaError(detail)
+    raise RuntimeError(detail)
 
 
 def upload_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, Any]]:
@@ -189,7 +248,7 @@ def main() -> int:
         return 0
     except Exception as error:
         try:
-            callback("failed", error_detail=str(error)[:3_000])
+            callback("failed", error_detail=str(error)[:3_000], retryable=isinstance(error, RetryableMediaError))
         except Exception as callback_error:
             print(f"::warning::Cloud callback failed: {callback_error}")
         print(f"::error::{error}")

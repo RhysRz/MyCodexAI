@@ -70,6 +70,20 @@ jobs:
         if: env.MYCODEXAI_MUSIC_SOURCE_URL != ''
         run: python -m pip install --disable-pip-version-check -r requirements-music-social.txt
 
+      - name: Prepare pinned YouTube Proof-of-Origin provider
+        if: startsWith(env.MYCODEXAI_MUSIC_SOURCE_URL, 'https://www.youtube.com/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          provider_root="$RUNNER_TEMP/bgutil-ytdlp-pot-provider"
+          git init "$provider_root"
+          git -C "$provider_root" remote add origin https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git
+          git -C "$provider_root" fetch --depth 1 origin 7608dd51ee813b48cf9a6d68c6e42cb197ce10e0
+          git -C "$provider_root" checkout --detach FETCH_HEAD
+          npm --prefix "$provider_root/server" ci
+          (cd "$provider_root/server" && npx tsc)
+          echo "MUSIC_YTDLP_POT_PROVIDER_HOME=$provider_root/server" >> "$GITHUB_ENV"
+
       - name: Cache Music AI models
         if: ${{ !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.pdf') && !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.PDF') }}
         uses: actions/cache@v5

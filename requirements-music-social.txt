@@ -1,2 +1,5 @@
 # Installed only for a YouTube/TikTok Music Lab job on a disposable runner.
 yt-dlp[default]==2026.6.9
+# Maintainer-recommended automatic Proof-of-Origin provider. It generates a
+# per-video token inside the disposable runner; no YouTube account is used.
+bgutil-ytdlp-pot-provider==1.3.1
