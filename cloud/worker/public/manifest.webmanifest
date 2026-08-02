@@ -13,6 +13,7 @@
   "shortcuts": [
     { "name": "แชทกับ MyCodex", "url": "/?view=chat" },
     { "name": "Codex workflow", "url": "/?view=agent" },
+    { "name": "Remote คอม", "url": "/?view=remote" },
     { "name": "Music Lab", "url": "/?view=music" }
   ]
 }

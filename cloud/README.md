@@ -12,6 +12,7 @@
 - GitHub Actions: checkout โปรเจกต์ ทดสอบ สร้าง branch และเปิด Pull Request
 - GitHub Actions Music: วิเคราะห์ PDF/TAB/WAV และส่งออก Analysis, MIDI, คอร์ด และ TAB
 - Web Speech API: รับเสียงภาษาไทยและอ่านคำตอบออกเสียงบนอุปกรณ์ที่รองรับ
+- Hybrid Bridge: สั่ง Agent/สร้าง Code Index บนคอมจากมือถือผ่านการเชื่อมต่อ HTTPS ขาออก โดยไม่เปิดพอร์ตเข้าคอม
 
 ข้อจำกัดของรุ่นฟรี: ไฟล์แนบไม่เกิน 10 MB ต่อไฟล์ รวม 50 MB ต่อบัญชีและหมดอายุใน 7 วัน งาน Agent และ Music Lab จะรอตามคิวของ repository ส่วนตัวนี้ ไม่ใช่คิวจากผู้ใช้ Workers AI คนอื่นโดยตรง PDF โน้ต/TAB แบบเวกเตอร์, PDF สแกนผ่าน Audiveris OMR และ WAV ใช้งานได้ เมื่อโควต้าของผู้ให้บริการหมด ระบบจะหยุดรอรอบรีเซ็ตและไม่คิดเงินหากไม่ได้ผูกวิธีชำระเงิน
 
@@ -97,6 +98,20 @@ npx wrangler secret put OAUTH_GOOGLE_CLIENT_SECRET
 npx wrangler secret put OAUTH_GITHUB_CLIENT_ID
 npx wrangler secret put OAUTH_GITHUB_CLIENT_SECRET
 ```
+
+## เชื่อมคอมกับหน้า Remote
+
+1. เปิดหน้า **บัญชีและความปลอดภัย** บน Cloud แล้วกด **สร้าง Bridge token** โทเคนจะแสดงครั้งเดียว
+2. เปิด PowerShell บนคอมแล้วรันคำสั่งด้านล่าง สคริปต์จะถามโทเคนแบบซ่อนตัวอักษรและบันทึกไว้เฉพาะ `.env` ที่ไม่ถูกส่งขึ้น Git
+
+```powershell
+cd C:\MyCodexAI
+.\deploy\windows\Enable-MyCodexAICloudBridge.ps1 `
+  -CloudUrl "https://mycodexai-cloud.mycodexai-cloud-worker.workers.dev" `
+  -Restart
+```
+
+หลังคอมขึ้นสถานะ `online` เมนู **Remote คอม** จะส่งงาน Agent, ตรวจความพร้อม และสร้าง Code Index ได้ การแก้ไฟล์ Git และ Terminal ยังต้องอนุมัติจากรายการงาน Remote ก่อนทุกครั้ง ปิดการเชื่อมต่อได้โดยยกเลิกอุปกรณ์จากหน้าบัญชีหรือตั้ง `CLOUD_BRIDGE_ENABLED=false` แล้วรีสตาร์ต
 
 ## การย้อนกลับ
 

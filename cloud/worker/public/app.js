@@ -52,10 +52,11 @@ function openSidebar() {
 function showView(name) {
   $$(".view").forEach((node) => node.classList.toggle("active-view", node.id === `view-${name}`));
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === name));
-  const titles = { chat: "MyCodex", agent: "Codex workflow", memory: "ความจำและ RAG", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", notifications: "การแจ้งเตือน", account: "บัญชีและความปลอดภัย", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
+  const titles = { chat: "MyCodex", agent: "Codex workflow", remote: "Remote คอม", memory: "ความจำและ RAG", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", notifications: "การแจ้งเตือน", account: "บัญชีและความปลอดภัย", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
   $("#view-title").textContent = titles[name] || "MyCodexAI";
   closeSidebar();
   if (name === "agent") loadRuns();
+  if (name === "remote") Promise.all([loadBridgeDevices(), loadBridgeJobs()]).catch((error) => toast(error.message));
   if (name === "memory") loadMemory();
   if (name === "files") loadFiles();
   if (name === "images") loadImageStatus();
@@ -621,10 +622,48 @@ async function loadBackups() {
 
 async function loadBridgeDevices() {
   const data = await api("/api/bridge/devices"); const list = $("#bridge-list"); list.replaceChildren();
+  const select = $("#remote-device"); const selected = select.value; select.replaceChildren(new Option("เลือกคอม", ""));
   if (!data.devices.length) list.append(element("p", "muted", "ยังไม่ได้เชื่อมคอม"));
   data.devices.forEach((device) => {
+    select.append(new Option(`${device.name} · ${device.status}`, device.id));
     const card = element("article", "item-card"); card.append(element("h3", "", device.name), element("span", `badge${device.status === "online" ? "" : " warning"}`, device.status), element("p", "muted tiny", device.last_seen_at ? `พบล่าสุด ${new Date(device.last_seen_at * 1000).toLocaleString("th-TH")}` : "ยังไม่เคยเชื่อมต่อ"));
     const remove = element("button", "danger", "ยกเลิกการเชื่อม"); remove.addEventListener("click", async () => { await api(`/api/bridge/devices/${device.id}`, { method: "DELETE" }); await loadBridgeDevices(); }); card.append(remove); list.append(card);
+  });
+  if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+}
+
+async function createBridgeJob(kind, payload = {}) {
+  const deviceId = $("#remote-device").value;
+  if (!deviceId) throw new Error("กรุณาเลือกคอมที่เชื่อมไว้");
+  return api("/api/bridge/jobs", { method: "POST", body: JSON.stringify({ device_id: deviceId, kind, payload, confirmed: true }) });
+}
+
+async function controlBridgeAgent(job, action) {
+  await createBridgeJob("agent_control", { run_id: job.result.run_id, action, parent_job_id: job.id });
+  toast(action === "approve" ? "อนุมัติแล้ว · คอมกำลังทำขั้นถัดไป" : action === "reject" ? "ปฏิเสธงานแล้ว" : "ขอยกเลิกงานแล้ว");
+  await loadBridgeJobs();
+}
+
+async function loadBridgeJobs() {
+  const data = await api("/api/bridge/jobs"); const list = $("#remote-job-list"); list.replaceChildren();
+  if (!data.jobs.length) list.append(element("p", "muted", "ยังไม่มีงาน Remote"));
+  data.jobs.forEach((job) => {
+    const card = element("article", "item-card");
+    const title = job.kind === "agent" ? (job.payload?.task || "Agent บนคอม") : job.kind === "index" ? "สร้าง Code Index" : job.kind === "health" ? "ตรวจความพร้อมคอม" : "ควบคุม Agent";
+    const head = element("div", "run-head"); head.append(element("h3", "", title), statusBadge(job.status)); card.append(head);
+    card.append(element("p", "muted tiny", `${job.device_name} · ${new Date(job.created_at * 1000).toLocaleString("th-TH")}`));
+    if (job.result?.answer) card.append(element("p", "", job.result.answer));
+    if (job.result?.detail) card.append(element("p", "", job.result.detail));
+    if (job.result?.index) card.append(element("p", "", `Index แล้ว ${job.result.index.file_count || 0} ไฟล์`));
+    const pending = job.result?.pending_action;
+    if (job.status === "awaiting_approval" && job.result?.run_id) {
+      card.append(element("p", "capability-note", `รออนุมัติ: ${pending?.tool || "การทำงานขั้นถัดไป"}\n${pending?.summary || "ตรวจรายละเอียดก่อนอนุมัติ"}`));
+      const actions = element("div", "item-actions");
+      const approve = element("button", "primary", "อนุมัติและทำต่อ"); approve.addEventListener("click", () => controlBridgeAgent(job, "approve").catch((error) => toast(error.message)));
+      const reject = element("button", "danger", "ปฏิเสธ"); reject.addEventListener("click", () => controlBridgeAgent(job, "reject").catch((error) => toast(error.message)));
+      actions.append(approve, reject); card.append(actions);
+    }
+    list.append(card);
   });
 }
 
@@ -675,7 +714,7 @@ async function boot() {
   if (account.role === "admin") $$(".admin-only").forEach((node) => node.classList.remove("hidden"));
   const status = await api("/api/cloud/status");
   $("#cloud-state").textContent = status.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
-  await Promise.all([loadHistory(), loadFiles(), loadImageStatus(), loadWorkspaces(), loadNotifications(false), loadBridgeDevices()]);
+  await Promise.all([loadHistory(), loadFiles(), loadImageStatus(), loadWorkspaces(), loadNotifications(false), loadBridgeDevices(), loadBridgeJobs()]);
   connectRealtime();
   const query = new URLSearchParams(location.search);
   if (query.get("oauth_success") === "linked") toast("เชื่อมบัญชี Social Login แล้ว");
@@ -745,6 +784,10 @@ $("#export-training").addEventListener("click", () => { location.href = "/api/le
 $("#refresh-system").addEventListener("click", () => loadSystem().catch((error) => toast(error.message)));
 $("#create-backup").addEventListener("click", async () => { try { await api("/api/admin/backups", { method: "POST", body: "{}" }); toast("สร้าง Backup เข้ารหัสแล้ว"); await loadBackups(); } catch (error) { toast(error.message); } });
 $("#register-bridge").addEventListener("click", async () => { try { const data = await api("/api/bridge/devices", { method: "POST", body: JSON.stringify({ name: $("#bridge-name").value }) }); $("#bridge-token").value = data.token; toast("สร้าง Bridge token แล้ว · กรุณาเก็บไว้ตอนนี้"); await loadBridgeDevices(); } catch (error) { toast(error.message); } });
+$("#remote-job-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await createBridgeJob("agent", { task: $("#remote-task").value, mode: $("#remote-mode").value }); $("#remote-task").value = ""; $("#remote-confirmed").checked = false; toast("ส่งงานไปที่คอมแล้ว"); await loadBridgeJobs(); } catch (error) { toast(error.message); } });
+$("#remote-health").addEventListener("click", async () => { try { await createBridgeJob("health"); toast("ส่งคำขอตรวจความพร้อมแล้ว"); await loadBridgeJobs(); } catch (error) { toast(error.message); } });
+$("#remote-index").addEventListener("click", async () => { try { await createBridgeJob("index"); toast("ส่งงานสร้าง Code Index แล้ว"); await loadBridgeJobs(); } catch (error) { toast(error.message); } });
+$("#refresh-remote").addEventListener("click", () => Promise.all([loadBridgeDevices(), loadBridgeJobs()]).catch((error) => toast(error.message)));
 $("#create-invite").addEventListener("click", async () => { try { const data = await api("/api/auth/invites", { method: "POST", body: JSON.stringify({ role: $("#invite-role").value }) }); $("#invite-result").value = `${location.origin}/login?invite=${encodeURIComponent(data.token)}`; } catch (error) { toast(error.message); } });
 $("#mfa-setup").addEventListener("click", () => beginMfaSetup().catch((error) => toast(error.message)));
 $("#mfa-enable").addEventListener("click", () => enableMfa().catch((error) => toast(error.message)));

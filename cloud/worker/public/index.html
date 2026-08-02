@@ -16,6 +16,7 @@
     <nav class="main-nav" aria-label="เมนูหลัก">
       <button class="nav-item active" data-view="chat">⌘ แชทกับ MyCodex</button>
       <button class="nav-item" data-view="agent">↗ Cloud Agent</button>
+      <button class="nav-item" data-view="remote">⌁ Remote คอม</button>
       <button class="nav-item" data-view="memory">▦ ความจำและ RAG</button>
       <button class="nav-item" data-view="files">＋ ไฟล์แนบ</button>
       <button class="nav-item" data-view="images">◇ Image Studio</button>
@@ -74,6 +75,21 @@
     <section id="view-files" class="view">
       <div class="panel narrow"><p class="eyebrow">CLOUD STORAGE</p><h1>ไฟล์บนคลาวด์</h1><p id="file-storage-note" class="muted">กำลังตรวจสอบพื้นที่เก็บไฟล์…</p><label class="upload-box">เลือกไฟล์หรือ ZIP โปรเจกต์<input id="file-picker" type="file" multiple></label><div id="upload-status" class="muted"></div></div>
       <div class="panel"><div class="section-title"><h2>ไฟล์ของฉัน</h2><button id="refresh-files" class="secondary">โหลดใหม่</button></div><div id="file-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-remote" class="view">
+      <div class="panel narrow">
+        <p class="eyebrow">HYBRID BRIDGE · OUTBOUND ONLY</p><h1>สั่ง MyCodex บนคอมจากมือถือ</h1>
+        <p class="muted">เลือกคอมแล้วส่งคำสั่งเดียวได้เหมือน Codex งานเขียนไฟล์ Git หรือ Terminal จะหยุดรอให้คุณตรวจและอนุมัติก่อนเสมอ ไม่ต้องเปิดพอร์ตเข้าคอม</p>
+        <form id="remote-job-form">
+          <label>คอมที่เชื่อมไว้<select id="remote-device" required><option value="">ยังไม่มีคอมออนไลน์</option></select></label>
+          <label>โหมด<select id="remote-mode"><option value="codex">Codex workflow</option><option value="agent">Agent แบบเร็ว</option><option value="project">สร้างโปรเจกต์</option><option value="delivery">Delivery</option><option value="team">Team workflow</option><option value="review">ตรวจโค้ด</option></select></label>
+          <label>คำสั่ง<textarea id="remote-task" rows="7" maxlength="20000" placeholder="เช่น ตรวจบั๊ก แก้โค้ด ทดสอบ แล้วหยุดรออนุมัติก่อน commit" required></textarea></label>
+          <label class="rights-confirm"><input id="remote-confirmed" type="checkbox" required><span>ยืนยันให้ส่งงานนี้ไปทำบนคอมที่เลือก</span></label>
+          <div class="item-actions"><button class="primary" type="submit">ส่งไปที่คอม</button><button id="remote-health" class="secondary" type="button">ตรวจความพร้อม</button><button id="remote-index" class="secondary" type="button">สร้าง Code Index</button></div>
+        </form>
+      </div>
+      <div class="panel"><div class="section-title"><h2>งานบนคอม</h2><button id="refresh-remote" class="secondary">โหลดใหม่</button></div><div id="remote-job-list" class="card-list"></div></div>
     </section>
 
     <section id="view-memory" class="view">
@@ -188,6 +204,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="/app.js?v=20260802-6" defer></script>
+  <script src="/app.js?v=20260802-7" defer></script>
 </body>
 </html>

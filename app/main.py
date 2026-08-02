@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -23,12 +24,23 @@ from app.api.music import router as music_router
 from app.core.settings import settings
 from app.core.security import CsrfOriginMiddleware, RequestSizeLimitMiddleware, SecurityHeadersMiddleware
 from app.services.auth_service import AuthService
+from app.services.cloud_bridge_service import CloudBridgeService
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    CloudBridgeService.start()
+    try:
+        yield
+    finally:
+        CloudBridgeService.stop()
 
 app = FastAPI(
     title=settings.app_name,
     docs_url="/docs" if settings.debug else None,
     redoc_url=None,
     openapi_url="/openapi.json" if settings.debug else None,
+    lifespan=lifespan,
 )
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)

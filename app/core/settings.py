@@ -80,6 +80,13 @@ class Settings(BaseSettings):
     agent_daily_run_limit: int = Field(default=12, ge=0, le=500)
     agent_daily_step_limit: int = Field(default=240, ge=0, le=20_000)
     agent_audit_retention: int = Field(default=400, ge=50, le=10_000)
+    # Optional outbound-only bridge to MyCodexAI Cloud. The local computer
+    # polls Cloudflare over HTTPS, so no inbound port or router rule is needed.
+    cloud_bridge_enabled: bool = False
+    cloud_bridge_url: str = ""
+    cloud_bridge_token: str = ""
+    cloud_bridge_poll_seconds: int = Field(default=8, ge=3, le=60)
+    cloud_bridge_job_timeout_seconds: int = Field(default=3600, ge=60, le=21_600)
     auth_database_path: str = ".mycodexai/auth.db"
     auth_bootstrap_token: str = ""
     auth_cookie_name: str = "mycodexai_session"
@@ -132,6 +139,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
+        if self.cloud_bridge_enabled:
+            bridge_url = urlparse(self.cloud_bridge_url)
+            if bridge_url.scheme != "https" or not bridge_url.hostname:
+                raise ValueError("CLOUD_BRIDGE_URL must be one HTTPS origin when the cloud bridge is enabled")
+            if not self.cloud_bridge_token:
+                raise ValueError("CLOUD_BRIDGE_TOKEN is required when the cloud bridge is enabled")
         if not self.is_production:
             return self
 

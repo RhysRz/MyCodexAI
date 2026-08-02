@@ -34,8 +34,11 @@ def test_codex_workflow_is_visible_and_default_on_cloud() -> None:
     app = (WORKER / "public" / "app.js").read_text(encoding="utf-8")
     agent = (WORKER / "src" / "agent.ts").read_text(encoding="utf-8")
     assert 'option value="codex"' in page
+    assert 'data-view="remote"' in page
+    assert 'id="remote-job-form"' in page
     assert "CODEX WORKFLOW · CLOUD AGENT" in page
     assert "agent-context" in page and "agent-done-when" in page
     assert 'payload.mode || "codex"' in agent
     assert "project_plan_json" in agent
     assert "เริ่ม Codex workflow แล้ว" in app
+    assert "/api/bridge/jobs" in app
