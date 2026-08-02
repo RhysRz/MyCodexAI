@@ -22,14 +22,27 @@ async function overview(context: RequestContext): Promise<Response> {
       (SELECT COUNT(*) FROM audit_events WHERE kind = 'image_generation' AND outcome = 'ok' AND created_at >= ?) AS images_today,
       (SELECT COUNT(*) FROM training_examples) AS training_examples,
       (SELECT COUNT(*) FROM training_evaluations) AS training_evaluations,
-      (SELECT COUNT(*) FROM music_jobs) AS music_jobs`,
+      (SELECT COUNT(*) FROM music_jobs) AS music_jobs,
+      (SELECT COUNT(*) FROM memory_documents) AS memory_documents,
+      (SELECT COUNT(*) FROM cloud_workspaces) AS workspaces,
+      (SELECT COUNT(*) FROM user_notifications WHERE read_at IS NULL) AS unread_notifications,
+      (SELECT COUNT(*) FROM backup_snapshots WHERE status = 'ready') AS backups,
+      (SELECT COUNT(*) FROM hybrid_devices WHERE status = 'online' AND revoked_at IS NULL) AS online_bridges`,
   ).bind(now, now - 86_400).first<Record<string, number>>();
   return json({
     counts: counts || {},
     capabilities: [
       { id: "chat", label: "แชทภาษาไทยแบบสตรีม", state: "cloud-native" },
       { id: "agent", label: "Cloud Agent และ Pull Request", state: "cloud-native" },
-      { id: "files", label: "ไฟล์แนบชั่วคราว", state: "cloud-native" },
+      { id: "codex_workflow", label: "Codex workflow: Plan → Implement → Verify → Review", state: "cloud-native" },
+      { id: "workspaces", label: "Cloud Project Workspace", state: "cloud-native" },
+      { id: "files", label: "Cloud File Storage", state: context.env.OBJECTS ? "cloud-native" : "d1-fallback" },
+      { id: "rag", label: "ความจำ RAG ภาษาไทยด้วย Vectorize", state: "cloud-native" },
+      { id: "realtime", label: "สถานะแบบเรียลไทม์ด้วย WebSocket", state: "cloud-native" },
+      { id: "queue", label: "คิวกลาง Agent และ Music พร้อม Retry/DLQ", state: "cloud-native" },
+      { id: "pwa", label: "PWA และการแจ้งเตือนบนอุปกรณ์", state: "cloud-native" },
+      { id: "backups", label: "Backup เข้ารหัสอัตโนมัติ", state: "cloud-native" },
+      { id: "hybrid", label: "Hybrid outbound bridge", state: "cloud-native" },
       { id: "images", label: "Image Studio", state: "cloud-native" },
       { id: "training", label: "Training Lab", state: "cloud-native" },
       {
@@ -45,7 +58,10 @@ async function overview(context: RequestContext): Promise<Response> {
       { id: "terminal", label: "Safe Terminal และ Docker sandbox", state: "remote-worker-required" },
       { id: "ollama", label: "Ollama บนเครื่อง", state: "remote-worker-required" },
     ],
-    remote_worker: { connected: false, status: "ยังไม่ได้เชื่อมตัวประมวลผลบนคอม" },
+    remote_worker: {
+      connected: Number((counts || {}).online_bridges || 0) > 0,
+      status: Number((counts || {}).online_bridges || 0) > 0 ? "คอมเชื่อมต่อผ่าน Outbound Bridge แล้ว" : "ยังไม่ได้เชื่อมตัวประมวลผลบนคอม",
+    },
   });
 }
 

@@ -5,8 +5,14 @@ import { cleanupExpiredFiles, handleFiles } from "./files";
 import { handleImages } from "./images";
 import { handleLearning } from "./learning";
 import { handleAdmin } from "./admin";
-import { handleMusic } from "./music";
+import { cleanupBackups, createBackup, handleBackups } from "./backups";
+import { handleBridge, markOfflineDevices } from "./bridge";
+import { handleMemory } from "./memory";
+import { consumeMusicQueue, handleMusic } from "./music";
+import { handleNotifications } from "./notifications";
 import { handleOAuth } from "./oauth";
+import { handleRealtime } from "./realtime";
+import { handleWorkspaces } from "./workspaces";
 import { currentUser, epochSeconds, errorJson, json, sameOrigin, secure } from "./security";
 import type { AgentQueueMessage, Env, RequestContext } from "./types";
 
@@ -33,7 +39,10 @@ async function route(request: Request, env: Env, execution: ExecutionContext): P
   if (path === "/api/health" && request.method === "GET") return json({ status: "ok", runtime: "cloudflare-workers" });
 
   const context: RequestContext = { request, env, execution, user: await currentUser(request, env) };
-  const handlers = [handleOAuth, handleAuth, handleChat, handleAgent, handleFiles, handleImages, handleLearning, handleAdmin, handleMusic];
+  const handlers = [
+    handleOAuth, handleAuth, handleRealtime, handleChat, handleWorkspaces, handleMemory, handleAgent,
+    handleFiles, handleImages, handleLearning, handleNotifications, handleBackups, handleBridge, handleAdmin, handleMusic,
+  ];
   for (const handler of handlers) {
     const response = await handler(context, path);
     if (response) return response;
@@ -61,7 +70,8 @@ export default {
     }
   },
   async queue(batch: MessageBatch<AgentQueueMessage>, env: Env): Promise<void> {
-    await consumeAgentQueue(batch, env);
+    if (batch.messages[0]?.body?.kind === "music") await consumeMusicQueue(batch, env);
+    else await consumeAgentQueue(batch, env);
   },
   async scheduled(_controller: ScheduledController, env: Env, _execution: ExecutionContext): Promise<void> {
     const now = epochSeconds();
@@ -74,5 +84,10 @@ export default {
       env.DB.prepare("DELETE FROM audit_events WHERE created_at < ?").bind(now - 90 * 86_400),
     ]);
     await cleanupExpiredFiles(env);
+    await cleanupBackups(env);
+    await markOfflineDevices(env);
+    try { await createBackup(env, null); } catch { /* Keep scheduled maintenance healthy when backup storage is unavailable. */ }
   },
 };
+
+export { UserEventHub } from "./realtime";

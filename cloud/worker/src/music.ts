@@ -1,5 +1,7 @@
-import type { RequestContext } from "./types";
+import type { AgentQueueMessage, Env, RequestContext } from "./types";
 import { audit, epochSeconds, errorJson, json, readJson, safeEqual, secure } from "./security";
+import { notifyUser } from "./notifications";
+import { publishEvent } from "./realtime";
 
 interface MusicPayload {
   file_id?: string;
@@ -27,6 +29,10 @@ interface MusicJobRow {
   created_at: number;
   updated_at: number;
   completed_at: number | null;
+  source_url?: string;
+  source_platform?: string;
+  progress?: number;
+  attempt_count?: number;
 }
 
 const ALLOWED_SUFFIXES = [".pdf", ".wav", ".wave", ".mp3", ".flac", ".m4a", ".aac", ".ogg"];
@@ -103,6 +109,8 @@ async function publicJob(context: RequestContext, row: MusicJobRow): Promise<Rec
     created_at: row.created_at,
     updated_at: row.updated_at,
     completed_at: row.completed_at,
+    progress: Number(row.progress || 0),
+    attempts: Number(row.attempt_count || 0),
     artifacts: await artifactsFor(context, row.id),
   };
 }
@@ -143,9 +151,6 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
     ).bind(context.user.id, now - (now % 86_400)).first<{ count: number }>();
     if (Number(count?.count || 0) >= USER_DAILY_LIMIT) return errorJson("ใช้สิทธิ์ Music Lab ครบแล้วสำหรับวันนี้", 429);
   }
-  if (!context.env.GITHUB_TOKEN || !context.env.GITHUB_OWNER || !context.env.GITHUB_REPO) {
-    return errorJson("ยังไม่ได้เชื่อม GitHub Runner", 503);
-  }
   let file: { id: string; name: string; size_bytes: number; status: string } | null = null;
   if (mediaSource) {
     file = { id: crypto.randomUUID(), name: `${mediaSource.platform}-${mediaSource.sourceId}.wav`, size_bytes: 0, status: "ready" };
@@ -166,28 +171,23 @@ async function dispatchJob(context: RequestContext): Promise<Response> {
   const id = crypto.randomUUID();
   const now = epochSeconds();
   await context.env.DB.prepare(
-    "INSERT INTO music_jobs (id, user_id, file_id, file_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'dispatching', ?, ?)",
-  ).bind(id, context.user.id, file.id, file.name.slice(0, 240), now, now).run();
-  const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(context.env.GITHUB_OWNER)}/${encodeURIComponent(context.env.GITHUB_REPO)}/dispatches`, {
-    method: "POST",
-    headers: {
-      "Accept": "application/vnd.github+json",
-      "Authorization": `Bearer ${context.env.GITHUB_TOKEN}`,
-      "Content-Type": "application/json",
-      "User-Agent": "MyCodexAI-Cloud/1.0",
-      "X-GitHub-Api-Version": "2026-03-10",
-    },
-    body: JSON.stringify({ event_type: "mycodexai-music", client_payload: { job_id: id, file_id: file.id, file_name: file.name, user_id: context.user.id, source_url: mediaSource?.url || "", source_platform: mediaSource?.platform || "file" } }),
-  });
-  if (!response.ok) {
+    `INSERT INTO music_jobs
+      (id, user_id, file_id, file_name, status, source_url, source_platform, progress, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'queued', ?, ?, 5, ?, ?)`,
+  ).bind(id, context.user.id, file.id, file.name.slice(0, 240), mediaSource?.url || "", mediaSource?.platform || "file", now, now).run();
+  try {
+    await context.env.AGENT_QUEUE.send({ kind: "music", jobId: id });
+  } catch {
     await context.env.DB.prepare(
       "UPDATE music_jobs SET status = 'failed', error_detail = ?, updated_at = ?, completed_at = ? WHERE id = ?",
-    ).bind("ส่งงานให้ GitHub Runner ไม่สำเร็จ", now, now, id).run();
-    await audit(context.env, context.user.id, "music_dispatched", "failed", `job=${id}; github=${response.status}`);
-    return errorJson("ส่งงาน Music Lab ไม่สำเร็จ กรุณาลองใหม่", 503);
+    ).bind("ส่งงานเข้าคิว Cloudflare ไม่สำเร็จ", now, now, id).run();
+    return errorJson("ส่งงาน Music Lab เข้าคิวไม่สำเร็จ กรุณาลองใหม่", 503);
   }
-  await context.env.DB.prepare("UPDATE music_jobs SET status = 'dispatched', updated_at = ? WHERE id = ?").bind(epochSeconds(), id).run();
-  await audit(context.env, context.user.id, "music_dispatched", "ok", `job=${id}; source=${mediaSource?.platform || "file"}`);
+  await audit(context.env, context.user.id, "music_queued", "ok", `job=${id}; source=${mediaSource?.platform || "file"}`);
+  context.execution.waitUntil(publishEvent(context.env, context.user.id, {
+    type: "music_progress", title: "รับงาน Music Lab เข้าคิวแล้ว", resource_id: id,
+    status: "queued", progress: 5, action_url: "/?view=music",
+  }));
   const row = await ownedJob(context, id);
   return json(await publicJob(context, row!), 202);
 }
@@ -223,9 +223,10 @@ async function callback(context: RequestContext): Promise<Response> {
   if (statements.length) await context.env.DB.batch(statements);
   const now = epochSeconds();
   await context.env.DB.prepare(
-    "UPDATE music_jobs SET status = ?, analysis_json = ?, error_detail = ?, updated_at = ?, completed_at = ? WHERE id = ?",
+    "UPDATE music_jobs SET status = ?, progress = ?, analysis_json = ?, error_detail = ?, updated_at = ?, completed_at = ? WHERE id = ?",
   ).bind(
     status,
+    status === "completed" || status === "failed" ? 100 : 55,
     payload.analysis ? JSON.stringify(payload.analysis).slice(0, 1_000_000) : job.analysis_json,
     String(payload.error_detail || "").slice(0, 3_000) || null,
     now,
@@ -233,6 +234,18 @@ async function callback(context: RequestContext): Promise<Response> {
     id,
   ).run();
   await audit(context.env, job.user_id, "music_callback", status, `job=${id}; artifacts=${statements.length}`);
+  if (status === "completed" || status === "failed") {
+    context.execution.waitUntil(notifyUser(context.env, job.user_id, {
+      type: "music_complete", title: status === "completed" ? "Music Lab วิเคราะห์เสร็จแล้ว" : "Music Lab ทำงานไม่สำเร็จ",
+      detail: status === "completed" ? job.file_name : String(payload.error_detail || "").slice(0, 500),
+      resource_id: id, status, progress: 100, action_url: "/?view=music",
+    }));
+  } else {
+    context.execution.waitUntil(publishEvent(context.env, job.user_id, {
+      type: "music_progress", title: "Music Lab กำลังวิเคราะห์", resource_id: id,
+      status, progress: 55, action_url: "/?view=music",
+    }));
+  }
   return json({ status: "ok" });
 }
 
@@ -240,21 +253,101 @@ async function downloadArtifact(context: RequestContext, jobId: string, kind: st
   const job = await ownedJob(context, jobId);
   if (!job) return errorJson("ไม่พบ Music job", 404);
   const item = await context.env.DB.prepare(
-    "SELECT file_name, media_type, contents FROM music_artifacts WHERE job_id = ? AND kind = ?",
-  ).bind(jobId, kind).first<{ file_name: string; media_type: string; contents: ArrayBuffer }>();
+    "SELECT file_name, media_type, contents, storage_key FROM music_artifacts WHERE job_id = ? AND kind = ?",
+  ).bind(jobId, kind).first<{ file_name: string; media_type: string; contents: ArrayBuffer; storage_key: string | null }>();
   if (!item) return errorJson("ไม่พบไฟล์ผลลัพธ์", 404);
-  return secure(new Response(item.contents, { headers: {
+  let body: BodyInit | null = item.contents;
+  if (item.storage_key && context.env.OBJECTS) body = (await context.env.OBJECTS.get(item.storage_key))?.body || null;
+  if (!body) return errorJson("ไม่พบข้อมูลไฟล์ผลลัพธ์", 404);
+  return secure(new Response(body, { headers: {
     "Content-Type": item.media_type,
     "Content-Disposition": `attachment; filename="${item.file_name.replace(/[^A-Za-z0-9._-]/g, "_")}"`,
     "Cache-Control": "private, no-store",
   } }));
 }
 
+async function uploadArtifact(context: RequestContext, jobId: string, kind: string): Promise<Response> {
+  if (!(await runnerAuthorized(context))) return errorJson("Runner secret ไม่ถูกต้อง", 401);
+  if (!ARTIFACTS.has(kind)) return errorJson("ชนิดไฟล์ผลลัพธ์ไม่ถูกต้อง", 400);
+  const job = await context.env.DB.prepare("SELECT id, user_id FROM music_jobs WHERE id = ?")
+    .bind(jobId).first<{ id: string; user_id: string }>();
+  if (!job) return errorJson("ไม่พบ Music job", 404);
+  const maximum = context.env.OBJECTS ? 80 * 1024 * 1024 : 1_500_000;
+  const advertised = Number(context.request.headers.get("Content-Length") || 0);
+  if (advertised < 1 || advertised > maximum) return errorJson("ไฟล์ผลลัพธ์ใหญ่เกินพื้นที่เก็บปัจจุบัน", 413);
+  const fileName = decodeURIComponent(context.request.headers.get("X-MyCodexAI-File-Name") || `${kind}.bin`)
+    .replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 160);
+  const mediaType = String(context.request.headers.get("Content-Type") || "application/octet-stream").slice(0, 100);
+  let contents: ArrayBuffer = new ArrayBuffer(0);
+  let storageKey: string | null = null;
+  if (context.env.OBJECTS) {
+    storageKey = `users/${job.user_id}/music/${jobId}/${kind}/${crypto.randomUUID()}`;
+    await context.env.OBJECTS.put(storageKey, context.request.body, {
+      httpMetadata: { contentType: mediaType, contentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}` },
+      customMetadata: { owner: job.user_id, job_id: jobId, kind },
+    });
+    const object = await context.env.OBJECTS.head(storageKey);
+    if (!object || object.size !== advertised) { await context.env.OBJECTS.delete(storageKey); return errorJson("ข้อมูลไฟล์ผลลัพธ์มาไม่ครบ", 409); }
+  } else {
+    contents = await context.request.arrayBuffer();
+    if (contents.byteLength !== advertised) return errorJson("ข้อมูลไฟล์ผลลัพธ์มาไม่ครบ", 409);
+  }
+  await context.env.DB.prepare(
+    `INSERT INTO music_artifacts (job_id, kind, file_name, media_type, contents, storage_key, size_bytes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(job_id, kind) DO UPDATE SET file_name = excluded.file_name, media_type = excluded.media_type,
+       contents = excluded.contents, storage_key = excluded.storage_key, size_bytes = excluded.size_bytes`,
+  ).bind(jobId, kind, fileName, mediaType, contents, storageKey, advertised).run();
+  return json({ status: "ok", kind, size_bytes: advertised, storage_backend: storageKey ? "r2" : "d1-fallback" });
+}
+
 export async function handleMusic(context: RequestContext, path: string): Promise<Response | null> {
   if (path === "/api/music/jobs" && context.request.method === "GET") return listJobs(context);
   if (path === "/api/music/jobs" && context.request.method === "POST") return dispatchJob(context);
   if (path === "/api/internal/music/callback" && context.request.method === "POST") return callback(context);
+  const upload = path.match(/^\/api\/internal\/music\/jobs\/([a-f0-9-]+)\/artifacts\/([a-z0-9_-]+)$/i);
+  if (upload && context.request.method === "PUT") return uploadArtifact(context, upload[1], upload[2]);
   const match = path.match(/^\/api\/music\/jobs\/([a-f0-9-]+)\/artifacts\/([a-z0-9_-]+)$/i);
   if (match && context.request.method === "GET") return downloadArtifact(context, match[1], match[2]);
   return null;
+}
+
+export async function consumeMusicQueue(batch: MessageBatch<AgentQueueMessage>, env: Env): Promise<void> {
+  for (const message of batch.messages) {
+    const id = String(message.body.jobId || "");
+    const job = await env.DB.prepare("SELECT * FROM music_jobs WHERE id = ?").bind(id).first<MusicJobRow>();
+    if (!job || ["completed", "failed", "cancelled"].includes(job.status)) { message.ack(); continue; }
+    if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) {
+      const now = epochSeconds();
+      await env.DB.prepare("UPDATE music_jobs SET status = 'failed', progress = 100, error_detail = ?, updated_at = ?, completed_at = ? WHERE id = ?")
+        .bind("ยังไม่ได้เชื่อม GitHub Runner", now, now, id).run();
+      message.ack(); continue;
+    }
+    await env.DB.prepare("UPDATE music_jobs SET status = 'dispatching', progress = 15, attempt_count = attempt_count + 1, updated_at = ? WHERE id = ?")
+      .bind(epochSeconds(), id).run();
+    const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/dispatches`, {
+      method: "POST",
+      headers: {
+        "Accept": "application/vnd.github+json", "Authorization": `Bearer ${env.GITHUB_TOKEN}`,
+        "Content-Type": "application/json", "User-Agent": "MyCodexAI-Cloud/1.0", "X-GitHub-Api-Version": "2026-03-10",
+      },
+      body: JSON.stringify({ event_type: "mycodexai-music", client_payload: {
+        job_id: id, file_id: job.file_id, file_name: job.file_name, user_id: job.user_id,
+        source_url: job.source_url || "", source_platform: job.source_platform || "file",
+      } }),
+    });
+    if (!response.ok) {
+      await env.DB.prepare("UPDATE music_jobs SET status = 'queued', progress = 5, updated_at = ? WHERE id = ?")
+        .bind(epochSeconds(), id).run();
+      message.retry({ delaySeconds: Math.min(300, 15 * Math.max(1, message.attempts)) });
+      continue;
+    }
+    await env.DB.prepare("UPDATE music_jobs SET status = 'dispatched', progress = 25, updated_at = ? WHERE id = ?")
+      .bind(epochSeconds(), id).run();
+    await publishEvent(env, job.user_id, {
+      type: "music_progress", title: "ส่งงานไป GitHub Runner แล้ว", resource_id: id,
+      status: "dispatched", progress: 25, action_url: "/?view=music",
+    });
+    message.ack();
+  }
 }

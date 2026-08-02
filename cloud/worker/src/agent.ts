@@ -1,7 +1,9 @@
 import type { AgentQueueMessage, AgentRunRow, RequestContext, Env } from "./types";
 import { audit, epochSeconds, errorJson, json, readJson, safeEqual } from "./security";
+import { notifyUser } from "./notifications";
+import { publishEvent } from "./realtime";
 
-const MODES = new Set(["agent", "project", "expert", "delivery", "team", "review"]);
+const MODES = new Set(["agent", "codex", "project", "expert", "delivery", "team", "review"]);
 const FINAL_STATUSES = new Set(["completed", "failed", "needs_review", "cancelled"]);
 
 interface RunPayload {
@@ -11,6 +13,14 @@ interface RunPayload {
   background?: boolean;
   review_scope?: string;
   review_target?: string;
+  workspace_id?: string;
+  goal?: string;
+  context?: string;
+  constraints?: string;
+  done_when?: string;
+  reasoning_effort?: string;
+  plan_first?: boolean;
+  verify?: boolean;
 }
 
 interface DraftFile {
@@ -66,7 +76,8 @@ async function runResponse(env: Env, row: AgentRunRow): Promise<Record<string, u
     answer: answerParts.filter(Boolean).join("\n\n") || null,
     trace,
     pending_action: null,
-    project_plan: null,
+    workflow: (() => { try { return JSON.parse(row.workflow_json || "{}"); } catch { return {}; } })(),
+    project_plan: (() => { try { return JSON.parse(row.project_plan_json || "null"); } catch { return null; } })(),
     team_members: [],
     progress: {
       current: trace.length,
@@ -75,6 +86,7 @@ async function runResponse(env: Env, row: AgentRunRow): Promise<Record<string, u
       phase: row.status,
       pull_request_url: row.pull_request_url,
       branch_name: row.branch_name,
+      attempts: Number(row.attempt_count || 0),
     },
     activity: FINAL_STATUSES.has(row.status) ? null : {
       kind: row.status,
@@ -98,8 +110,31 @@ async function createRun(context: RequestContext): Promise<Response> {
   if (!context.user) return errorJson("ต้องเข้าสู่ระบบ", 401);
   const payload = await readJson<RunPayload>(context.request, 64_000);
   const task = cleanTask(payload.task);
-  const mode = MODES.has(String(payload.mode || "agent")) ? String(payload.mode || "agent") : "agent";
+  const mode = MODES.has(String(payload.mode || "codex")) ? String(payload.mode || "codex") : "codex";
   const attachments = cleanAttachments(payload.attachments);
+  const workspaceId = String(payload.workspace_id || "").trim();
+  if (workspaceId) {
+    const workspace = await context.env.DB.prepare("SELECT id FROM cloud_workspaces WHERE id = ? AND user_id = ?")
+      .bind(workspaceId, context.user.id).first();
+    if (!workspace) return errorJson("ไม่พบ Cloud Workspace ที่เลือก", 404);
+  }
+  const effort = ["low", "medium", "high"].includes(String(payload.reasoning_effort)) ? String(payload.reasoning_effort) : "high";
+  const workflow = {
+    goal: String(payload.goal || task).trim().slice(0, 20_000),
+    context: String(payload.context || "").trim().slice(0, 20_000),
+    constraints: String(payload.constraints || "รักษาความปลอดภัย ไม่แก้ secret และคงความเข้ากันได้เดิม").trim().slice(0, 12_000),
+    done_when: String(payload.done_when || "ทดสอบที่เกี่ยวข้องผ่าน ตรวจ diff แล้ว และเปิด Pull Request ให้ผู้ใช้ตรวจ").trim().slice(0, 12_000),
+    reasoning_effort: effort,
+    plan_first: payload.plan_first !== false,
+    verify: payload.verify !== false,
+    approval_policy: "pull-request-review",
+  };
+  const projectPlan = [
+    { step: "สำรวจ repository และอ่านบริบทที่เกี่ยวข้อง", status: "pending" },
+    { step: mode === "review" ? "ตรวจ diff และหาความเสี่ยงโดยไม่แก้ไฟล์" : "แก้ไขแบบเจาะจงบน branch แยก", status: "pending" },
+    { step: "รันการตรวจสอบที่กำหนดและเก็บหลักฐาน", status: "pending" },
+    { step: "สรุป diff และส่งให้ผู้ใช้ตรวจผ่าน Pull Request", status: "pending" },
+  ];
   const now = epochSeconds();
   if (context.user.role !== "admin") {
     const dayStart = now - (now % 86_400);
@@ -113,11 +148,14 @@ async function createRun(context: RequestContext): Promise<Response> {
   const trace = [{ kind: "queued", status: "ok", summary: "รับงานเข้าสู่คิว Cloud Agent แล้ว" }];
   await context.env.DB.prepare(
     `INSERT INTO agent_runs
-      (id, user_id, task, mode, status, trace_json, attachments_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
-  ).bind(runId, context.user.id, task, mode, JSON.stringify(trace), JSON.stringify(attachments), now, now).run();
+      (id, user_id, task, mode, status, trace_json, attachments_json, workspace_id, workflow_json, project_plan_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    runId, context.user.id, task, mode, JSON.stringify(trace), JSON.stringify(attachments), workspaceId || null,
+    JSON.stringify(workflow), JSON.stringify(projectPlan), now, now,
+  ).run();
   try {
-    await context.env.AGENT_QUEUE.send({ runId });
+    await context.env.AGENT_QUEUE.send({ kind: "agent", runId });
   } catch {
     await context.env.DB.prepare(
       "UPDATE agent_runs SET status = 'failed', error_detail = ?, updated_at = ?, completed_at = ? WHERE id = ?",
@@ -125,6 +163,10 @@ async function createRun(context: RequestContext): Promise<Response> {
     return errorJson("ไม่สามารถส่งงานเข้าคิวได้ กรุณาลองใหม่", 503);
   }
   await audit(context.env, context.user.id, "agent_queued", "ok", "Cloud agent job queued");
+  context.execution.waitUntil(publishEvent(context.env, context.user.id, {
+    type: "agent_progress", title: "รับงานเข้า Codex workflow แล้ว", detail: task.slice(0, 180),
+    resource_id: runId, status: "queued", progress: 5, action_url: "/?view=agent",
+  }));
   const row = await getOwnedRun(context, runId);
   return json(await runResponse(context.env, row!), 202);
 }
@@ -249,8 +291,10 @@ async function draft(context: RequestContext): Promise<Response> {
   const system = `You are MyCodex Cloud Agent, a senior software engineer operating through a reviewed GitHub pull request.
 Return only one JSON object with this schema: {"summary":"Thai summary","files":[{"path":"relative/path","content":"complete file content"}],"notes":["Thai note"]}.
 Use complete file contents, never partial snippets. Modify at most 20 files. Never create or modify .env, credentials, tokens, .git paths, or .github/workflows.
-Do not claim tests passed. The runner will execute fixed checks. Prefer focused, secure and maintainable changes. Explain summary and notes in correct Thai.`;
-  const prompt = `TASK (${run.mode}):\n${run.task}\n\nREPOSITORY MANIFEST:\n${(payload.manifest || []).slice(0, 500).join("\n")}\n\nSELECTED FILE CONTENTS:${contextFiles.join("")}`;
+Do not claim tests passed. The runner will execute fixed checks. Prefer focused, secure and maintainable changes. Explain summary and notes in correct Thai.
+Codex workflow means: inspect before editing, follow durable repository guidance, keep changes scoped, preserve user work, verify the result, review the final diff, and stop at a Pull Request for human approval.
+For review mode, return no modified files and provide findings in summary/notes only. For project mode, create a complete but focused project foundation. For team mode, reason through explorer, implementer, tester and reviewer roles sequentially.`;
+  const prompt = `TASK (${run.mode}):\n${run.task}\n\nWORKFLOW:\n${run.workflow_json || "{}"}\n\nREPOSITORY MANIFEST:\n${(payload.manifest || []).slice(0, 500).join("\n")}\n\nSELECTED FILE CONTENTS:${contextFiles.join("")}`;
   let output: unknown;
   try {
     output = await (context.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> }).run(
@@ -263,7 +307,7 @@ Do not claim tests passed. The runner will execute fixed checks. Prefer focused,
   try {
     const parsed = extractJson(aiText(output));
     const files = safeDraftFiles(parsed.files);
-    if (!files.length) return errorJson("โมเดลยังไม่ได้ส่งไฟล์ที่แก้ไขกลับมา", 422);
+    if (!files.length && run.mode !== "review") return errorJson("โมเดลยังไม่ได้ส่งไฟล์ที่แก้ไขกลับมา", 422);
     return json({ summary: String(parsed.summary || "เตรียมการแก้ไขแล้ว").slice(0, 2_000), files, notes: Array.isArray(parsed.notes) ? parsed.notes.slice(0, 20).map(String) : [] });
   } catch (error) {
     return errorJson(error instanceof Error ? error.message : "ไม่สามารถอ่านผลลัพธ์ของโมเดลได้", 422);
@@ -305,6 +349,19 @@ async function callback(context: RequestContext): Promise<Response> {
     runId,
   ).run();
   await audit(context.env, current.user_id, "agent_callback", status, "GitHub runner updated cloud agent status");
+  if (FINAL_STATUSES.has(status)) {
+    context.execution.waitUntil(notifyUser(context.env, current.user_id, {
+      type: "agent_complete",
+      title: status === "needs_review" ? "Codex workflow พร้อมให้ตรวจแล้ว" : status === "completed" ? "Cloud Agent ทำงานเสร็จแล้ว" : "Cloud Agent หยุดทำงาน",
+      detail: String(payload.answer || payload.error_detail || "").slice(0, 500), resource_id: runId, status,
+      progress: 100, action_url: "/?view=agent",
+    }));
+  } else {
+    context.execution.waitUntil(publishEvent(context.env, current.user_id, {
+      type: "agent_progress", title: "Codex workflow กำลังทำงาน", resource_id: runId, status,
+      progress: status === "running" ? 55 : 25, action_url: "/?view=agent",
+    }));
+  }
   return json({ status: "ok" });
 }
 
@@ -329,7 +386,9 @@ export async function handleAgent(context: RequestContext, path: string): Promis
 
 export async function consumeAgentQueue(batch: MessageBatch<AgentQueueMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
-    const run = await env.DB.prepare("SELECT * FROM agent_runs WHERE id = ?").bind(message.body.runId).first<AgentRunRow>();
+    if (message.body.kind && message.body.kind !== "agent") { message.retry({ delaySeconds: 15 }); continue; }
+    const runId = String(message.body.runId || "");
+    const run = await env.DB.prepare("SELECT * FROM agent_runs WHERE id = ?").bind(runId).first<AgentRunRow>();
     if (!run || run.status === "cancelled" || FINAL_STATUSES.has(run.status)) {
       message.ack();
       continue;
@@ -343,7 +402,7 @@ export async function consumeAgentQueue(batch: MessageBatch<AgentQueueMessage>, 
       continue;
     }
     const now = epochSeconds();
-    await env.DB.prepare("UPDATE agent_runs SET status = 'dispatching', updated_at = ? WHERE id = ?").bind(now, run.id).run();
+    await env.DB.prepare("UPDATE agent_runs SET status = 'dispatching', attempt_count = attempt_count + 1, updated_at = ? WHERE id = ?").bind(now, run.id).run();
     const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}/dispatches`, {
       method: "POST",
       headers: {
@@ -360,6 +419,8 @@ export async function consumeAgentQueue(batch: MessageBatch<AgentQueueMessage>, 
           task: run.task.slice(0, 20_000),
           mode: run.mode,
           attachments: parseArray(run.attachments_json).slice(0, 20),
+          workspace_id: run.workspace_id || "",
+          workflow: (() => { try { return JSON.parse(run.workflow_json || "{}"); } catch { return {}; } })(),
         },
       }),
     });

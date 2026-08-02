@@ -1,9 +1,11 @@
 import type { RequestContext } from "./types";
 import { audit, epochSeconds, errorJson, json, readJson, secure } from "./security";
+import { retrieveMemory } from "./memory";
 
 interface ChatPayload {
   message?: string;
   conversation_id?: string;
+  workspace_id?: string;
 }
 
 interface ChatMessageRow {
@@ -122,12 +124,15 @@ async function streamChat(context: RequestContext): Promise<Response> {
       "UPDATE conversations SET title = CASE WHEN ? = 0 THEN ? ELSE title END, updated_at = ? WHERE id = ? AND user_id = ?",
     ).bind(Number(existingCount?.count || 0), message.slice(0, 80), now, conversationId, context.user.id),
   ]);
-  const [history, examples] = await Promise.all([
+  const workspaceId = String(payload.workspace_id || "").trim();
+  const [history, examples, memories] = await Promise.all([
     recentMessages(context, conversationId),
     learnedExamples(context),
+    retrieveMemory(context.env, context.user.id, message, workspaceId, 5),
   ]);
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
+    ...(memories.length ? [{ role: "system", content: `บริบทจากความจำส่วนตัวของผู้ใช้ (ใช้เฉพาะเมื่อเกี่ยวข้อง และห้ามแต่งส่วนที่ไม่มี):\n\n${memories.map((item, index) => `[${index + 1}] ${item}`).join("\n\n")}` }] : []),
     ...examples.flatMap((item) => [
       { role: "user", content: item.instruction },
       { role: "assistant", content: item.ideal_response },

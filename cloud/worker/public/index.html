@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#101113">
   <title>MyCodexAI Cloud</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/style.css?v=20260802-5">
+  <link rel="stylesheet" href="/style.css?v=20260802-6">
 </head>
 <body class="app-page">
   <button id="backdrop" class="backdrop hidden" aria-label="ปิดเมนู"></button>
@@ -16,10 +16,12 @@
     <nav class="main-nav" aria-label="เมนูหลัก">
       <button class="nav-item active" data-view="chat">⌘ แชทกับ MyCodex</button>
       <button class="nav-item" data-view="agent">↗ Cloud Agent</button>
+      <button class="nav-item" data-view="memory">▦ ความจำและ RAG</button>
       <button class="nav-item" data-view="files">＋ ไฟล์แนบ</button>
       <button class="nav-item" data-view="images">◇ Image Studio</button>
       <button class="nav-item" data-view="music">♫ Music Lab</button>
       <button class="nav-item" data-view="account">☻ บัญชีและความปลอดภัย</button>
+      <button class="nav-item" data-view="notifications">◌ การแจ้งเตือน <span id="notification-badge" class="nav-badge hidden">0</span></button>
       <button class="nav-item admin-only hidden" data-view="training">✦ Training Lab</button>
       <button class="nav-item admin-only hidden" data-view="system">◉ สถานะระบบ</button>
       <button class="nav-item admin-only hidden" data-view="admin">⚙ ผู้ดูแลระบบ</button>
@@ -36,7 +38,7 @@
     <header class="topbar">
       <button id="open-sidebar" class="icon-button mobile-only" aria-label="เปิดเมนู">☰</button>
       <div><strong id="view-title">MyCodex</strong><small id="cloud-state">Cloudflare · กำลังตรวจสอบ</small></div>
-      <span class="online-dot" title="พร้อมใช้งาน"></span>
+      <div class="topbar-actions"><button id="open-notifications" class="icon-button" aria-label="เปิดการแจ้งเตือน">◌</button><span class="online-dot" title="พร้อมใช้งาน"></span></div>
     </header>
 
     <section id="view-chat" class="view active-view">
@@ -51,21 +53,38 @@
 
     <section id="view-agent" class="view">
       <div class="panel narrow">
-        <p class="eyebrow">CLOUD AGENT</p><h1>สั่งแก้โปรเจกต์ผ่าน Pull Request</h1>
-        <p class="muted">งานหนักจะไปรันบน GitHub ทีละงาน เครื่องของคุณไม่ต้องเปิดไว้</p>
+        <p class="eyebrow">CODEX WORKFLOW · CLOUD AGENT</p><h1>วางแผน → ลงมือ → ทดสอบ → ตรวจ Diff</h1>
+        <p class="muted">ทำงานบน branch แยกและหยุดที่ Pull Request เพื่อให้คุณตรวจสอบก่อนรวม เครื่องของคุณไม่ต้องเปิดไว้</p>
         <form id="agent-form">
           <label>คำสั่งงาน<textarea id="agent-task" rows="7" maxlength="20000" placeholder="เช่น ตรวจสอบบั๊กหน้าเข้าสู่ระบบ แก้ไข ทดสอบ และเปิด Pull Request" required></textarea></label>
-          <label>โหมด<select id="agent-mode"><option value="agent">Agent</option><option value="project">สร้างโปรเจกต์</option><option value="review">ตรวจโค้ด</option><option value="delivery">ส่งมอบงาน</option></select></label>
+          <div class="two-column"><label>Workspace<select id="agent-workspace"></select></label><label>โหมด<select id="agent-mode"><option value="codex">Codex workflow</option><option value="agent">Agent แบบเร็ว</option><option value="expert">Expert workflow</option><option value="project">สร้างโปรเจกต์</option><option value="delivery">Delivery</option><option value="team">Team workflow</option><option value="review">ตรวจโค้ดอย่างเดียว</option></select></label></div>
+          <details class="workflow-details" open><summary>บริบทและเกณฑ์เสร็จงาน</summary>
+            <label>บริบทที่ต้องรู้<textarea id="agent-context" rows="3" maxlength="20000" placeholder="ไฟล์ ปัญหา ตัวอย่าง หรือข้อจำกัดของระบบ"></textarea></label>
+            <label>ข้อจำกัด<textarea id="agent-constraints" rows="3" maxlength="12000" placeholder="ห้ามแก้ secret, รักษา API เดิม, รองรับมือถือ"></textarea></label>
+            <label>ถือว่าเสร็จเมื่อ<textarea id="agent-done-when" rows="3" maxlength="12000" placeholder="ทดสอบผ่าน ตรวจ diff และเปิด Pull Request"></textarea></label>
+            <div class="workflow-options"><label><input id="agent-plan-first" type="checkbox" checked> วางแผนก่อน</label><label><input id="agent-verify" type="checkbox" checked> ทดสอบและตรวจ Diff</label><label>ระดับการคิด<select id="agent-effort"><option value="high">สูง</option><option value="medium">กลาง</option><option value="low">ต่ำ</option></select></label></div>
+          </details>
           <fieldset><legend>ไฟล์แนบ</legend><div id="agent-files" class="check-list muted">ยังไม่มีไฟล์พร้อมใช้</div></fieldset>
-          <button class="primary" type="submit">ส่งเข้าคิว Agent</button>
+          <button class="primary" type="submit">เริ่ม Codex workflow</button>
         </form>
       </div>
       <div class="panel"><div class="section-title"><h2>สถานะงาน</h2><button id="refresh-runs" class="secondary">โหลดใหม่</button></div><div id="run-list" class="card-list"></div></div>
     </section>
 
     <section id="view-files" class="view">
-      <div class="panel narrow"><p class="eyebrow">ATTACHMENTS</p><h1>ไฟล์ชั่วคราวบนคลาวด์</h1><p class="muted">ไม่เกินไฟล์ละ 10 MB รวม 50 MB และลบอัตโนมัติใน 7 วัน</p><label class="upload-box">เลือกไฟล์<input id="file-picker" type="file" multiple></label><div id="upload-status" class="muted"></div></div>
+      <div class="panel narrow"><p class="eyebrow">CLOUD STORAGE</p><h1>ไฟล์บนคลาวด์</h1><p id="file-storage-note" class="muted">กำลังตรวจสอบพื้นที่เก็บไฟล์…</p><label class="upload-box">เลือกไฟล์หรือ ZIP โปรเจกต์<input id="file-picker" type="file" multiple></label><div id="upload-status" class="muted"></div></div>
       <div class="panel"><div class="section-title"><h2>ไฟล์ของฉัน</h2><button id="refresh-files" class="secondary">โหลดใหม่</button></div><div id="file-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-memory" class="view">
+      <div class="panel narrow"><p class="eyebrow">PRIVATE MEMORY · VECTORIZE</p><h1>ความจำและความรู้ของโปรเจกต์</h1><p class="muted">MyCodex จะค้นเฉพาะข้อมูลของบัญชีคุณ แล้วนำส่วนที่เกี่ยวข้องไปช่วยตอบแชท</p>
+        <form id="memory-form"><div class="two-column"><label>ชื่อเอกสาร<input id="memory-title" maxlength="180" placeholder="เช่น แนวทางของโปรเจกต์"></label><label>Workspace<select id="memory-workspace"><option value="">ใช้ได้ทุก Workspace</option></select></label></div><label>เนื้อหา<textarea id="memory-content" rows="10" maxlength="80000" placeholder="วางเอกสาร คู่มือ โค้ด หรือข้อมูลที่ต้องการให้ MyCodex จำ" required></textarea></label><button class="primary" type="submit">สร้าง Code/Knowledge Index</button></form>
+      </div>
+      <div class="panel"><div class="section-title"><h2>เอกสารในความจำ</h2><button id="refresh-memory" class="secondary">โหลดใหม่</button></div><div id="memory-list" class="card-list"></div></div>
+    </section>
+
+    <section id="view-notifications" class="view">
+      <div class="panel"><div class="section-title"><div><p class="eyebrow">REALTIME</p><h1>การแจ้งเตือน</h1></div><div class="item-actions"><button id="enable-browser-notifications" class="secondary">เปิดแจ้งเตือนบนอุปกรณ์</button><button id="read-all-notifications" class="secondary">อ่านทั้งหมด</button></div></div><p id="realtime-state" class="muted">กำลังเชื่อมต่อสถานะแบบเรียลไทม์…</p><div id="notification-list" class="card-list"></div></div>
     </section>
 
     <section id="view-images" class="view">
@@ -133,6 +152,7 @@
         <div id="system-counts" class="stat-grid"></div>
         <h2>ความสามารถ</h2><div id="capability-list" class="card-list"></div>
       </div>
+      <div class="panel"><div class="section-title"><h2>Backup เข้ารหัสอัตโนมัติ</h2><button id="create-backup" class="secondary">สร้าง Backup ตอนนี้</button></div><p class="muted tiny">ไม่รวมรหัสผ่าน, MFA secret, API key หรือ token และเก็บไฟล์เข้ารหัส 30 วัน</p><div id="backup-list" class="card-list"></div></div>
       <div class="panel"><div class="section-title"><h2>Audit log ล่าสุด</h2><button id="refresh-system" class="secondary">โหลดใหม่</button></div><p class="muted tiny">ไม่บันทึกรหัสผ่าน, API key, token หรือ prompt สร้างภาพ</p><div id="audit-list" class="card-list"></div></div>
     </section>
 
@@ -160,6 +180,7 @@
         </div>
       </div>
       <div class="panel narrow"><h2>อุปกรณ์ที่เข้าสู่ระบบ</h2><div id="session-list" class="card-list"></div><button id="revoke-sessions" class="danger">ออกจากระบบอุปกรณ์อื่นทั้งหมด</button></div>
+      <div class="panel narrow"><p class="eyebrow">HYBRID BRIDGE</p><h2>เชื่อมคอมแบบ Outbound</h2><p class="muted">คอมจะเชื่อมออกมายัง Cloud เอง ไม่ต้องเปิดพอร์ตเข้าเครื่อง งานบนคอมทำได้เฉพาะตอนคอมเปิด</p><div class="inline"><input id="bridge-name" maxlength="100" placeholder="ชื่อคอม เช่น Studio PC"><button id="register-bridge" class="secondary">สร้าง Bridge token</button></div><textarea id="bridge-token" rows="3" readonly placeholder="โทเคนจะแสดงครั้งเดียว"></textarea><div id="bridge-list" class="card-list"></div></div>
     </section>
 
     <section id="view-admin" class="view">
@@ -167,6 +188,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="/app.js?v=20260802-5" defer></script>
+  <script src="/app.js?v=20260802-6" defer></script>
 </body>
 </html>

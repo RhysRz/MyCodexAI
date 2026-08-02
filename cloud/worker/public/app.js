@@ -5,9 +5,11 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 let account = null;
 let conversationId = null;
 let files = [];
+let workspaces = [];
 let runTimer = null;
 let musicTimer = null;
 let imageBlob = null;
+let realtimeSocket = null;
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -50,13 +52,15 @@ function openSidebar() {
 function showView(name) {
   $$(".view").forEach((node) => node.classList.toggle("active-view", node.id === `view-${name}`));
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === name));
-  const titles = { chat: "MyCodex", agent: "Cloud Agent", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", account: "บัญชีและความปลอดภัย", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
+  const titles = { chat: "MyCodex", agent: "Codex workflow", memory: "ความจำและ RAG", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", notifications: "การแจ้งเตือน", account: "บัญชีและความปลอดภัย", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
   $("#view-title").textContent = titles[name] || "MyCodexAI";
   closeSidebar();
   if (name === "agent") loadRuns();
+  if (name === "memory") loadMemory();
   if (name === "files") loadFiles();
   if (name === "images") loadImageStatus();
   if (name === "music") loadMusicJobs();
+  if (name === "notifications") loadNotifications(true);
   if (name === "training") loadTraining();
   if (name === "system") loadSystem();
   if (name === "account") Promise.all([loadSessions(), loadMfa(), loadOAuth()]).catch((error) => toast(error.message));
@@ -107,7 +111,7 @@ async function sendMessage(message) {
   const pending = addBubble("assistant", "", true);
   const response = await fetch("/api/chat/stream", {
     method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({ message, conversation_id: conversationId, workspace_id: $("#agent-workspace")?.value || "" }),
   });
   if (response.status === 401) return location.replace("/login");
   if (!response.ok || !response.body) {
@@ -180,6 +184,10 @@ function speakThai(text) {
 async function loadFiles() {
   const data = await api("/api/files");
   files = data.files || [];
+  const limitMb = Math.floor(Number(data.max_file_bytes || 0) / 1024 / 1024);
+  $("#file-storage-note").textContent = data.storage_backend === "r2"
+    ? `R2 พร้อมใช้งาน · สูงสุดไฟล์ละ ${limitMb} MB · ลบอัตโนมัติใน 7 วัน`
+    : `กำลังใช้ D1 สำรอง · สูงสุดไฟล์ละ ${limitMb} MB · เปิด R2 ใน Cloudflare เพื่อรองรับไฟล์ใหญ่และ Stem เต็ม`;
   const list = $("#file-list");
   list.replaceChildren();
   if (!files.length) list.append(element("p", "muted", "ยังไม่มีไฟล์แนบ"));
@@ -187,6 +195,7 @@ async function loadFiles() {
     const card = element("article", "item-card");
     card.append(element("h3", "", file.name), element("p", "", `${(file.size_bytes / 1024).toFixed(1)} KB · ${file.status === "ready" ? "พร้อมใช้" : "กำลังอัปโหลด"}`));
     const actions = element("div", "item-actions");
+    if (file.download_url) { const download = element("a", "secondary", "ดาวน์โหลด"); download.href = file.download_url; download.download = file.name; actions.append(download); }
     const remove = element("button", "danger", "ลบ");
     remove.addEventListener("click", async () => { await api(`/api/files/${file.id}`, { method: "DELETE" }); await loadFiles(); });
     actions.append(remove); card.append(actions); list.append(card);
@@ -209,6 +218,11 @@ async function loadFiles() {
 
 async function uploadFile(file) {
   const meta = await api("/api/files", { method: "POST", body: JSON.stringify({ name: file.name, media_type: file.type, size_bytes: file.size }) });
+  if (meta.direct_upload) {
+    $("#upload-status").textContent = `กำลังอัปโหลด ${file.name} ไป R2`;
+    await api(`/api/files/${meta.id}/content`, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+    return;
+  }
   for (let index = 0; index < meta.chunk_count; index += 1) {
     $("#upload-status").textContent = `กำลังอัปโหลด ${file.name} · ${index + 1}/${meta.chunk_count}`;
     const chunk = await file.slice(index * meta.chunk_bytes, Math.min(file.size, (index + 1) * meta.chunk_bytes)).arrayBuffer();
@@ -230,7 +244,15 @@ async function loadRuns() {
   data.runs.forEach((run) => {
     if (!["completed", "failed", "needs_review", "cancelled"].includes(run.status)) active = true;
     const card = element("article", "item-card");
-    card.append(element("h3", "", run.task), statusBadge(run.status));
+    const head = element("div", "run-head"); head.append(element("h3", "", run.task), statusBadge(run.status)); card.append(head);
+    const workflow = run.workflow || {};
+    card.append(element("p", "muted tiny", `${run.mode === "codex" ? "Codex workflow" : run.mode} · ระดับการคิด ${workflow.reasoning_effort || "high"} · คิว ${run.progress?.queue_position || "-"}`));
+    if (run.project_plan?.length) {
+      const plan = element("ol", "workflow-plan");
+      run.project_plan.forEach((item) => { const step = element("li", item.status || "pending", item.step); plan.append(step); });
+      card.append(plan);
+    }
+    const progress = document.createElement("progress"); progress.max = 100; progress.value = Number(run.progress?.pull_request_url ? 100 : run.status === "running" ? 55 : run.status === "dispatched" ? 25 : run.status === "queued" ? 5 : ["failed", "cancelled", "completed", "needs_review"].includes(run.status) ? 100 : 15); progress.setAttribute("aria-label", "ความคืบหน้างาน"); card.append(progress);
     if (run.answer) card.append(element("p", "", run.answer));
     const actions = element("div", "item-actions");
     if (run.progress?.pull_request_url) {
@@ -518,6 +540,94 @@ async function exportCanvaSvg() {
   toast("ส่งออก SVG สำหรับนำเข้า Canva แล้ว");
 }
 
+async function loadWorkspaces() {
+  const data = await api("/api/workspaces");
+  workspaces = data.workspaces || [];
+  const selects = [$("#agent-workspace"), $("#memory-workspace")].filter(Boolean);
+  selects.forEach((select) => {
+    const previous = select.value;
+    const globalOption = select.id === "memory-workspace" ? new Option("ใช้ได้ทุก Workspace", "") : null;
+    select.replaceChildren(...(globalOption ? [globalOption] : []));
+    workspaces.forEach((workspace) => select.append(new Option(`${workspace.name} · ${workspace.default_branch}`, workspace.id)));
+    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  });
+}
+
+async function loadMemory() {
+  const data = await api("/api/memory/documents");
+  const list = $("#memory-list"); list.replaceChildren();
+  if (!data.documents.length) list.append(element("p", "muted", "ยังไม่มีเอกสารในความจำ"));
+  data.documents.forEach((documentItem) => {
+    const card = element("article", "item-card");
+    card.append(element("h3", "", documentItem.title), element("p", "", documentItem.content_preview || ""), element("span", "badge", `${documentItem.status} · ${documentItem.chunk_count} ส่วน`));
+    const actions = element("div", "item-actions"); const remove = element("button", "danger", "ลบจากความจำ");
+    remove.addEventListener("click", async () => { await api(`/api/memory/documents/${documentItem.id}`, { method: "DELETE" }); await loadMemory(); });
+    actions.append(remove); card.append(actions); list.append(card);
+  });
+}
+
+function updateNotificationBadge(unread) {
+  const badge = $("#notification-badge");
+  badge.textContent = String(unread || 0); badge.classList.toggle("hidden", !unread);
+}
+
+async function loadNotifications(mark = false) {
+  if (mark) await api("/api/notifications/read", { method: "POST", body: "{}" });
+  const data = await api("/api/notifications"); updateNotificationBadge(data.unread);
+  const list = $("#notification-list"); list.replaceChildren();
+  if (!data.notifications.length) list.append(element("p", "muted", "ยังไม่มีการแจ้งเตือน"));
+  data.notifications.forEach((item) => {
+    const card = element("article", `item-card${item.read_at ? "" : " unread"}`);
+    card.append(element("h3", "", item.title), element("p", "", item.detail || ""), element("p", "muted tiny", new Date(item.created_at * 1000).toLocaleString("th-TH")));
+    if (item.action_url) { const link = element("a", "secondary", "เปิดดู"); link.href = item.action_url; card.append(link); }
+    list.append(card);
+  });
+}
+
+function browserNotify(event) {
+  if (!("Notification" in window) || Notification.permission !== "granted" || document.visibilityState === "visible") return;
+  const notification = new Notification(event.title || "MyCodexAI", { body: event.detail || "มีสถานะใหม่", icon: "/app-icon.svg", tag: `${event.type}:${event.resource_id || ""}` });
+  notification.onclick = () => { window.focus(); if (event.action_url) location.href = event.action_url; };
+}
+
+function connectRealtime() {
+  if (realtimeSocket && realtimeSocket.readyState < 2) return;
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  realtimeSocket = new WebSocket(`${protocol}//${location.host}/api/realtime`);
+  realtimeSocket.onopen = () => { $("#realtime-state").textContent = "เชื่อมต่อแบบเรียลไทม์แล้ว"; };
+  realtimeSocket.onmessage = (message) => {
+    if (message.data === "pong") return;
+    let event; try { event = JSON.parse(message.data); } catch { return; }
+    if (event.type === "connected") return;
+    browserNotify(event);
+    loadNotifications(false).catch(() => {});
+    if (event.type.startsWith("agent_")) loadRuns().catch(() => {});
+    if (event.type.startsWith("music_")) loadMusicJobs().catch(() => {});
+  };
+  realtimeSocket.onclose = () => { $("#realtime-state").textContent = "การเชื่อมต่อเรียลไทม์หลุด · กำลังเชื่อมใหม่"; setTimeout(connectRealtime, 4_000); };
+  realtimeSocket.onerror = () => realtimeSocket.close();
+}
+
+async function loadBackups() {
+  if (account?.role !== "admin") return;
+  const data = await api("/api/admin/backups"); const list = $("#backup-list"); list.replaceChildren();
+  if (!data.backups.length) list.append(element("p", "muted", "ยังไม่มี Backup"));
+  data.backups.forEach((backup) => {
+    const card = element("article", "item-card"); card.append(element("h3", "", `Backup ${new Date(backup.created_at * 1000).toLocaleString("th-TH")}`), statusBadge(backup.status), element("p", "muted", `${backup.record_count || 0} รายการ · ${((backup.size_bytes || 0) / 1024).toFixed(1)} KB`));
+    if (backup.status === "ready") { const link = element("a", "secondary", "ดาวน์โหลดไฟล์เข้ารหัส"); link.href = `/api/admin/backups/${backup.id}`; card.append(link); }
+    list.append(card);
+  });
+}
+
+async function loadBridgeDevices() {
+  const data = await api("/api/bridge/devices"); const list = $("#bridge-list"); list.replaceChildren();
+  if (!data.devices.length) list.append(element("p", "muted", "ยังไม่ได้เชื่อมคอม"));
+  data.devices.forEach((device) => {
+    const card = element("article", "item-card"); card.append(element("h3", "", device.name), element("span", `badge${device.status === "online" ? "" : " warning"}`, device.status), element("p", "muted tiny", device.last_seen_at ? `พบล่าสุด ${new Date(device.last_seen_at * 1000).toLocaleString("th-TH")}` : "ยังไม่เคยเชื่อมต่อ"));
+    const remove = element("button", "danger", "ยกเลิกการเชื่อม"); remove.addEventListener("click", async () => { await api(`/api/bridge/devices/${device.id}`, { method: "DELETE" }); await loadBridgeDevices(); }); card.append(remove); list.append(card);
+  });
+}
+
 async function loadTraining() {
   if (account?.role !== "admin") return;
   const data = await api("/api/learning/overview");
@@ -537,19 +647,19 @@ async function loadTraining() {
 
 async function loadSystem() {
   if (account?.role !== "admin") return;
-  const [overview, auditLog] = await Promise.all([api("/api/admin/overview"), api("/api/admin/audit")]);
+  const [overview, auditLog] = await Promise.all([api("/api/admin/overview"), api("/api/admin/audit"), loadBackups()]);
   const counts = $("#system-counts"); counts.replaceChildren();
-  const labels = { users: "ผู้ใช้", conversations: "แชท", messages: "ข้อความ", agent_runs: "งาน Agent", active_runs: "งานที่กำลังรัน", files: "ไฟล์", images_today: "ภาพวันนี้", training_examples: "ตัวอย่างฝึก", training_evaluations: "โจทย์ประเมิน", music_jobs: "งานเพลง" };
+  const labels = { users: "ผู้ใช้", conversations: "แชท", messages: "ข้อความ", agent_runs: "งาน Agent", active_runs: "งานที่กำลังรัน", files: "ไฟล์", images_today: "ภาพวันนี้", training_examples: "ตัวอย่างฝึก", training_evaluations: "โจทย์ประเมิน", music_jobs: "งานเพลง", memory_documents: "เอกสาร RAG", workspaces: "Workspace", unread_notifications: "แจ้งเตือนใหม่", backups: "Backup", online_bridges: "คอมออนไลน์" };
   Object.entries(labels).forEach(([key, label]) => { const card = element("div", "stat-card"); card.append(element("strong", "", String(overview.counts[key] || 0)), element("span", "", label)); counts.append(card); });
   const capabilities = $("#capability-list"); capabilities.replaceChildren();
   overview.capabilities.forEach((item) => {
     const card = element("article", "item-card capability-card");
-    const ready = !["remote-worker-required", "configuration-required"].includes(item.state);
-    const stateLabel = item.state === "cloud-runner" ? "พร้อมผ่าน GitHub Runner" : item.state === "configuration-required" ? "รอตั้งค่า Client ID / Secret" : ready ? "พร้อมบน Cloud" : "ต้องเชื่อม Remote Worker";
+    const ready = !["remote-worker-required", "configuration-required", "d1-fallback"].includes(item.state);
+    const stateLabel = item.state === "cloud-runner" ? "พร้อมผ่าน GitHub Runner" : item.state === "configuration-required" ? "รอตั้งค่า Client ID / Secret" : item.state === "d1-fallback" ? "ใช้ D1 สำรอง · เปิด R2 เพื่อไฟล์ใหญ่" : ready ? "พร้อมบน Cloud" : "ต้องเชื่อม Remote Worker";
     card.append(element("h3", "", item.label), element("span", `badge${ready ? "" : " warning"}`, stateLabel));
     capabilities.append(card);
   });
-  $("#music-worker-state").textContent = overview.remote_worker.status;
+  if ($("#music-worker-state")) $("#music-worker-state").textContent = overview.remote_worker.status;
   const auditList = $("#audit-list"); auditList.replaceChildren();
   auditLog.events.forEach((item) => {
     const card = element("article", "item-card");
@@ -565,12 +675,15 @@ async function boot() {
   if (account.role === "admin") $$(".admin-only").forEach((node) => node.classList.remove("hidden"));
   const status = await api("/api/cloud/status");
   $("#cloud-state").textContent = status.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
-  await Promise.all([loadHistory(), loadFiles(), loadImageStatus()]);
+  await Promise.all([loadHistory(), loadFiles(), loadImageStatus(), loadWorkspaces(), loadNotifications(false), loadBridgeDevices()]);
+  connectRealtime();
   const query = new URLSearchParams(location.search);
   if (query.get("oauth_success") === "linked") toast("เชื่อมบัญชี Social Login แล้ว");
   if (query.get("oauth_success") === "login") toast("เข้าสู่ระบบด้วย Social Login แล้ว");
   if (query.get("oauth_error")) toast("เชื่อมบัญชี Social Login ไม่สำเร็จหรือบัญชีนี้ถูกใช้งานแล้ว");
-  if (query.has("oauth_success") || query.has("oauth_error")) history.replaceState(null, "", location.pathname);
+  const requestedView = query.get("view");
+  if (requestedView && $(`#view-${requestedView}`)) showView(requestedView);
+  if (query.has("oauth_success") || query.has("oauth_error")) history.replaceState(null, "", requestedView ? `/?view=${encodeURIComponent(requestedView)}` : location.pathname);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
@@ -579,12 +692,36 @@ $$(".nav-item").forEach((node) => node.addEventListener("click", () => showView(
 $("#refresh-history").addEventListener("click", () => loadConversations().catch((error) => toast(error.message)));
 $("#refresh-files").addEventListener("click", () => loadFiles().catch((error) => toast(error.message)));
 $("#refresh-runs").addEventListener("click", () => loadRuns().catch((error) => toast(error.message)));
+$("#refresh-memory").addEventListener("click", () => loadMemory().catch((error) => toast(error.message)));
+$("#open-notifications").addEventListener("click", () => showView("notifications"));
+$("#read-all-notifications").addEventListener("click", () => loadNotifications(true).catch((error) => toast(error.message)));
+$("#enable-browser-notifications").addEventListener("click", async () => {
+  if (!("Notification" in window)) return toast("เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน");
+  const permission = await Notification.requestPermission(); toast(permission === "granted" ? "เปิดการแจ้งเตือนแล้ว" : "ยังไม่ได้รับอนุญาตให้แจ้งเตือน");
+});
 $("#new-chat").addEventListener("click", async () => { const data = await api("/api/chat/conversations", { method: "POST", body: "{}" }); await loadHistory(data.id); showView("chat"); });
 $("#composer").addEventListener("submit", async (event) => { event.preventDefault(); const input = $("#message-input"); const message = input.value.trim(); if (!message) return; input.value = ""; input.disabled = true; try { await sendMessage(message); } catch (error) { toast(error.message); } finally { input.disabled = false; input.focus(); } });
 $("#message-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("#composer").requestSubmit(); } });
 $("#voice-input").addEventListener("click", listenThai);
 $("#file-picker").addEventListener("change", async (event) => { try { for (const file of event.target.files) await uploadFile(file); $("#upload-status").textContent = "อัปโหลดเรียบร้อย"; await loadFiles(); } catch (error) { toast(error.message); } finally { event.target.value = ""; } });
-$("#agent-form").addEventListener("submit", async (event) => { event.preventDefault(); const attachments = $$("#agent-files input:checked").map((node) => node.value); try { await api("/api/agent/runs", { method: "POST", body: JSON.stringify({ task: $("#agent-task").value, mode: $("#agent-mode").value, attachments }) }); $("#agent-task").value = ""; toast("ส่งงานเข้าคิวแล้ว"); await loadRuns(); } catch (error) { toast(error.message); } });
+$("#agent-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const attachments = $$("#agent-files input:checked").map((node) => node.value);
+  try {
+    await api("/api/agent/runs", { method: "POST", body: JSON.stringify({
+      task: $("#agent-task").value, goal: $("#agent-task").value, mode: $("#agent-mode").value,
+      workspace_id: $("#agent-workspace").value, context: $("#agent-context").value,
+      constraints: $("#agent-constraints").value, done_when: $("#agent-done-when").value,
+      reasoning_effort: $("#agent-effort").value, plan_first: $("#agent-plan-first").checked,
+      verify: $("#agent-verify").checked, attachments,
+    }) });
+    $("#agent-task").value = ""; toast("เริ่ม Codex workflow แล้ว"); await loadRuns();
+  } catch (error) { toast(error.message); }
+});
+$("#memory-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const button = event.submitter; if (button) button.disabled = true;
+  try { await api("/api/memory/documents", { method: "POST", body: JSON.stringify({ title: $("#memory-title").value, content: $("#memory-content").value, workspace_id: $("#memory-workspace").value, kind: "knowledge" }) }); event.target.reset(); toast("สร้าง Index และบันทึกความจำแล้ว"); await loadMemory(); }
+  catch (error) { toast(error.message); } finally { if (button) button.disabled = false; }
+});
 $("#image-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await generateImage(); } catch (error) { toast(error.message); } });
 $("#music-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const button = $("#start-music");
@@ -606,6 +743,8 @@ $("#training-evaluation-form").addEventListener("submit", async (event) => { eve
 $("#refresh-training").addEventListener("click", () => loadTraining().catch((error) => toast(error.message)));
 $("#export-training").addEventListener("click", () => { location.href = "/api/learning/export"; });
 $("#refresh-system").addEventListener("click", () => loadSystem().catch((error) => toast(error.message)));
+$("#create-backup").addEventListener("click", async () => { try { await api("/api/admin/backups", { method: "POST", body: "{}" }); toast("สร้าง Backup เข้ารหัสแล้ว"); await loadBackups(); } catch (error) { toast(error.message); } });
+$("#register-bridge").addEventListener("click", async () => { try { const data = await api("/api/bridge/devices", { method: "POST", body: JSON.stringify({ name: $("#bridge-name").value }) }); $("#bridge-token").value = data.token; toast("สร้าง Bridge token แล้ว · กรุณาเก็บไว้ตอนนี้"); await loadBridgeDevices(); } catch (error) { toast(error.message); } });
 $("#create-invite").addEventListener("click", async () => { try { const data = await api("/api/auth/invites", { method: "POST", body: JSON.stringify({ role: $("#invite-role").value }) }); $("#invite-result").value = `${location.origin}/login?invite=${encodeURIComponent(data.token)}`; } catch (error) { toast(error.message); } });
 $("#mfa-setup").addEventListener("click", () => beginMfaSetup().catch((error) => toast(error.message)));
 $("#mfa-enable").addEventListener("click", () => enableMfa().catch((error) => toast(error.message)));

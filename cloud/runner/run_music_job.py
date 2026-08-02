@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 import json
 import os
@@ -132,8 +131,8 @@ def download_media_source() -> tuple[bytes, dict[str, Any]]:
     }
 
 
-def encoded_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, str]]:
-    output: list[dict[str, str]] = []
+def upload_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
     for kind in (
         "analysis", "midi", "chords", "tab", "musicxml", "stem_midi",
         "stem_vocals", "stem_drums", "stem_bass", "stem_guitar", "stem_piano", "stem_other",
@@ -142,15 +141,27 @@ def encoded_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, str
             path, media_type, file_name = MusicService.artifact_for(user, music_id, kind)
         except Exception:
             continue
-        contents = path.read_bytes()
-        if len(contents) > 1_500_000:
+        size = path.stat().st_size
+        if size <= 0 or size > 80 * 1024 * 1024:
             continue
-        output.append({
-            "kind": kind,
-            "file_name": file_name,
-            "media_type": media_type,
-            "contents_base64": base64.b64encode(contents).decode("ascii"),
-        })
+        request = urllib.request.Request(
+            f"{CLOUD_URL}/api/internal/music/jobs/{urllib.parse.quote(JOB_ID)}/artifacts/{kind}",
+            data=path.read_bytes(), method="PUT",
+            headers={
+                "Authorization": f"Bearer {RUNNER_SECRET}",
+                "Content-Type": media_type,
+                "Content-Length": str(size),
+                "X-MyCodexAI-File-Name": urllib.parse.quote(file_name),
+                "User-Agent": "MyCodexAI-Music-Runner/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                response.read()
+            output.append({"kind": kind, "file_name": file_name, "media_type": media_type, "size_bytes": size})
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", "replace")[:500]
+            print(f"::warning::Could not upload {kind}: HTTP {error.code} {detail}")
     return output
 
 
@@ -171,7 +182,9 @@ def main() -> int:
         if media_metadata:
             analysis["source"] = media_metadata
             MusicService._write_json(MusicService._track_directory(user.id, music_id) / "analysis.json", analysis)
-        callback("completed", analysis=analysis, artifacts=encoded_artifacts(user, music_id))
+        uploaded = upload_artifacts(user, music_id)
+        analysis["cloud_artifacts"] = uploaded
+        callback("completed", analysis=analysis)
         print(f"Music analysis completed: {JOB_ID}")
         return 0
     except Exception as error:

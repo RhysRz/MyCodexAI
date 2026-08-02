@@ -1,5 +1,7 @@
 export interface AgentQueueMessage {
-  runId: string;
+  kind?: "agent" | "music" | "backup";
+  runId?: string;
+  jobId?: string;
 }
 
 export interface CloudUser {
@@ -13,8 +15,13 @@ export interface Env {
   AI: Ai;
   ASSETS: Fetcher;
   AGENT_QUEUE: Queue<AgentQueueMessage>;
+  EVENT_HUB: DurableObjectNamespace;
+  VECTORIZE: VectorizeIndex;
+  /** Optional until R2 is enabled for this Cloudflare account. */
+  OBJECTS?: R2Bucket;
   AI_MODEL: string;
   IMAGE_MODEL?: string;
+  EMBEDDING_MODEL?: string;
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_TOKEN: string;
@@ -49,6 +56,11 @@ export interface AgentRunRow {
   error_detail: string | null;
   trace_json: string;
   attachments_json: string;
+  workspace_id?: string | null;
+  workflow_json?: string;
+  project_plan_json?: string | null;
+  attempt_count?: number;
+  cancel_requested?: number;
   created_at: number;
   updated_at: number;
   started_at: number | null;

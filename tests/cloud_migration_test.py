@@ -166,13 +166,17 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "canonicalMediaUrl" in music
     assert "rights_confirmed" in music
     assert music.index("COUNT(*) AS count FROM music_jobs") < music.index("application/x-mycodexai-media-url")
-    assert 'source_url: mediaSource?.url || ""' in music
+    assert 'source_url: job.source_url || ""' in music
+    assert 'AGENT_QUEUE.send({ kind: "music", jobId: id })' in music
+    assert "consumeMusicQueue" in music
     assert '"vm.tiktok.com", "vt.tiktok.com"' in music
     assert 'media_type.startsWith("application/x-mycodexai-")' in files
     assert 'id="music-source-url"' in page
     assert 'id="music-rights-confirmed"' in page
     assert "กรุณายืนยันสิทธิ์การใช้เนื้อหาจาก YouTube/TikTok" in app
     assert "canonical_media_url" in runner
+    assert "upload_artifacts" in runner
+    assert "/api/internal/music/jobs/" in runner
     assert '"vm.tiktok.com", "vt.tiktok.com"' in media_url
     assert '"--no-playlist"' in runner
     assert "duration > 360" in runner

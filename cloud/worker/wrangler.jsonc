@@ -17,6 +17,29 @@
 	"ai": {
 		"binding": "AI"
 	},
+	"vectorize": [
+		{
+			"binding": "VECTORIZE",
+			"index_name": "mycodexai-memory"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EVENT_HUB",
+				"class_name": "UserEventHub"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "realtime-v1",
+			"new_sqlite_classes": ["UserEventHub"]
+		}
+	],
+	// R2-ready: after enabling R2 in the dashboard, create mycodexai-objects and
+	// add an r2_buckets binding named OBJECTS. The application falls back to D1
+	// safely until that account-level switch is available.
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -51,6 +74,7 @@
 	"vars": {
 		"AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
 		"IMAGE_MODEL": "@cf/black-forest-labs/flux-2-klein-9b",
+		"EMBEDDING_MODEL": "@cf/qwen/qwen3-embedding-0.6b",
 		"GITHUB_OWNER": "RhysRz",
 		"GITHUB_REPO": "MyCodexAI",
 		"PUBLIC_ORIGIN": "https://mycodexai-cloud.mycodexai-cloud-worker.workers.dev",
