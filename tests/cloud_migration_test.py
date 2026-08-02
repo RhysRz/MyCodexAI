@@ -185,6 +185,9 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0" in workflow
     assert "MUSIC_YTDLP_POT_PROVIDER_HOME" in workflow
     assert "youtube:player_client=web_embedded" in runner
+    assert "youtube:player_client=web_safari" in runner
+    assert "youtube:player_client=tv_simply" in runner
+    assert "youtube:player_client=android_vr" in runner
     assert "youtube:player_client=mweb" in runner
     assert "youtubepot-bgutilscript:server_home=" in runner
     assert "RetryableMediaError" in runner
@@ -192,6 +195,9 @@ def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     assert "MAX_SOURCE_ATTEMPTS = 2" in music
     assert 'job.status === "running"' in music
     assert '"music_runner_retry"' in music
+    assert "Preflight authorized social-video source" in workflow
+    assert "cloud.runner.prepare_music_source" in workflow
+    assert "PREPARED_AUDIO" in runner
     assert "actions/setup-node@v6" in workflow
 
 

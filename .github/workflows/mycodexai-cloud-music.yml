@@ -84,6 +84,10 @@ jobs:
           (cd "$provider_root/server" && npx tsc)
           echo "MUSIC_YTDLP_POT_PROVIDER_HOME=$provider_root/server" >> "$GITHUB_ENV"
 
+      - name: Preflight authorized social-video source
+        if: env.MYCODEXAI_MUSIC_SOURCE_URL != ''
+        run: python -m cloud.runner.prepare_music_source
+
       - name: Cache Music AI models
         if: ${{ !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.pdf') && !endsWith(env.MYCODEXAI_MUSIC_FILE_NAME, '.PDF') }}
         uses: actions/cache@v5

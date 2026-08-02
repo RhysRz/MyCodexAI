@@ -26,6 +26,8 @@ CLOUD_URL = os.environ["MYCODEXAI_CLOUD_URL"].rstrip("/")
 RUNNER_SECRET = os.environ["MYCODEXAI_RUNNER_SECRET"]
 STATE_ROOT = ROOT / ".mycodexai-music-job" / "runs"
 STARTED_MARKER = ROOT / ".mycodexai-music-runner-started"
+PREPARED_AUDIO = ROOT / ".mycodexai-media-source" / "prepared.wav"
+PREPARED_METADATA = ROOT / ".mycodexai-media-source" / "prepared.json"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -96,6 +98,9 @@ def _media_strategies(platform: str) -> list[tuple[str, list[str]]]:
     strategies: list[tuple[str, list[str]]] = [
         ("default", []),
         ("web-embedded", ["--extractor-args", "youtube:player_client=web_embedded"]),
+        ("web-safari-hls", ["--extractor-args", "youtube:player_client=web_safari"]),
+        ("tv-simply", ["--extractor-args", "youtube:player_client=tv_simply"]),
+        ("android-vr", ["--extractor-args", "youtube:player_client=android_vr"]),
     ]
     provider_home = os.environ.get("MUSIC_YTDLP_POT_PROVIDER_HOME", "").strip()
     if provider_home:
@@ -135,7 +140,37 @@ def _validate_media_metadata(metadata: dict[str, Any], platform: str) -> float:
     return duration
 
 
+def _prepared_media_source() -> tuple[bytes, dict[str, Any]] | None:
+    if not PREPARED_AUDIO.is_file() or not PREPARED_METADATA.is_file():
+        return None
+    size = PREPARED_AUDIO.stat().st_size
+    if size < 1 or size > 80 * 1024 * 1024:
+        return None
+    try:
+        metadata = json.loads(PREPARED_METADATA.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(metadata, dict) or metadata.get("url") != canonical_media_url(SOURCE_URL)[0]:
+        return None
+    return PREPARED_AUDIO.read_bytes(), metadata
+
+
+def _report_media_diagnostics(diagnostics: list[str]) -> None:
+    """Expose useful extractor errors without leaking generated tokens."""
+    markers = ("error:", "warning:", "sign in", "not a bot", "http error", "login_required", "unavailable")
+    for diagnostic in diagnostics:
+        strategy, _, body = diagnostic.partition(":")
+        useful = [line.strip() for line in body.splitlines() if any(marker in line.casefold() for marker in markers)]
+        summary = " | ".join(useful[-4:])[:1_200]
+        summary = re.sub(r"(?i)(po[_ -]?token|visitor[_ -]?data)=?[^ ;|]+", r"\1=[redacted]", summary)
+        if summary:
+            print(f"::warning::YouTube strategy {strategy.strip()} failed: {summary}", file=sys.stderr)
+
+
 def download_media_source() -> tuple[bytes, dict[str, Any]]:
+    prepared = _prepared_media_source()
+    if prepared:
+        return prepared
     url, platform, source_id = canonical_media_url(SOURCE_URL)
     yt_dlp = [
         sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-playlist",
@@ -185,9 +220,19 @@ def download_media_source() -> tuple[bytes, dict[str, Any]]:
         }
 
     detail = _classify_media_failure(platform, diagnostics)
+    _report_media_diagnostics(diagnostics)
     if platform == "youtube":
         raise RetryableMediaError(detail)
     raise RuntimeError(detail)
+
+
+def prepare_media_source() -> dict[str, Any]:
+    """Download social audio before installing the expensive analysis stack."""
+    contents, metadata = download_media_source()
+    PREPARED_AUDIO.parent.mkdir(parents=True, exist_ok=True)
+    PREPARED_AUDIO.write_bytes(contents)
+    PREPARED_METADATA.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+    return metadata
 
 
 def upload_artifacts(user: CloudMusicUser, music_id: str) -> list[dict[str, Any]]:
