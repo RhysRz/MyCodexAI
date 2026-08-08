@@ -143,7 +143,7 @@ async function streamChat(context: RequestContext): Promise<Response> {
   let output: unknown;
   try {
     output = await (context.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> }).run(
-      context.env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
+      context.env.CHAT_AI_MODEL || context.env.AI_MODEL || "@cf/meta/llama-3.1-8b-instruct-fp8",
       { messages, stream: true, max_tokens: 1_200, temperature: 0.45 },
     );
   } catch {
