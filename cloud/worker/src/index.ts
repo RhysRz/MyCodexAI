@@ -25,7 +25,8 @@ async function status(env: Env): Promise<Response> {
     ready: true,
     bootstrap_required: Number(count?.count || 0) === 0,
     agent_configured: Boolean(env.GITHUB_OWNER && env.GITHUB_REPO && !env.GITHUB_OWNER.startsWith("REPLACE_") && !env.GITHUB_REPO.startsWith("REPLACE_")),
-    model: env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
+    model: env.CHAT_AI_MODEL || env.AI_MODEL || "@cf/meta/llama-3.1-8b-instruct-fp8",
+    agent_model: env.AGENT_AI_MODEL || env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
   });
 }
 

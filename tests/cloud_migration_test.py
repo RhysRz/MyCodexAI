@@ -132,6 +132,20 @@ def test_cloud_parity_features_are_wired_and_role_aware() -> None:
     assert 'id="music-form"' in page
 
 
+def test_cloud_chat_and_agent_use_separate_models() -> None:
+    config = (WORKER / "wrangler.jsonc").read_text(encoding="utf-8")
+    chat = (WORKER / "src" / "chat.ts").read_text(encoding="utf-8")
+    agent = (WORKER / "src" / "agent.ts").read_text(encoding="utf-8")
+    types = (WORKER / "src" / "types.ts").read_text(encoding="utf-8")
+
+    assert '"CHAT_AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"' in config
+    assert '"AGENT_AI_MODEL": "@cf/google/gemma-4-26b-a4b-it"' in config
+    assert "context.env.CHAT_AI_MODEL || context.env.AI_MODEL" in chat
+    assert "context.env.AGENT_AI_MODEL || context.env.AI_MODEL" in agent
+    assert "CHAT_AI_MODEL?: string" in types
+    assert "AGENT_AI_MODEL?: string" in types
+
+
 def test_cloud_music_uses_private_runner_and_owner_scoped_results() -> None:
     music = (WORKER / "src" / "music.ts").read_text(encoding="utf-8")
     files = (WORKER / "src" / "files.ts").read_text(encoding="utf-8")

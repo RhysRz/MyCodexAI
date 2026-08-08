@@ -298,7 +298,7 @@ For review mode, return no modified files and provide findings in summary/notes 
   let output: unknown;
   try {
     output = await (context.env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> }).run(
-      context.env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
+      context.env.AGENT_AI_MODEL || context.env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it",
       { messages: [{ role: "system", content: system }, { role: "user", content: prompt }], max_tokens: 7_500, temperature: 0.2 },
     );
   } catch {
