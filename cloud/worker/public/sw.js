@@ -1,5 +1,5 @@
-const CACHE = "mycodexai-shell-v5";
-const SHELL = ["/style.css?v=20260802-6", "/app.js?v=20260802-7", "/login.js?v=20260802-3", "/manifest.webmanifest", "/app-icon.svg"];
+const CACHE = "mycodexai-shell-v6";
+const SHELL = ["/style.css?v=20260808-1", "/app.js?v=20260808-1", "/login.js?v=20260802-3", "/manifest.webmanifest", "/app-icon.svg"];
 self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (event) => {

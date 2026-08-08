@@ -10,6 +10,26 @@ let runTimer = null;
 let musicTimer = null;
 let imageBlob = null;
 let realtimeSocket = null;
+let cloudStatus = null;
+
+const MODEL_LABELS = {
+  "@cf/meta/llama-3.1-8b-instruct-fp8": "Llama 3.1 8B Instruct FP8",
+  "@cf/google/gemma-4-26b-a4b-it": "Gemma 4 26B A4B",
+};
+
+function modelLabel(model) {
+  if (!model) return "ไม่ทราบรุ่น";
+  return MODEL_LABELS[model] || model.split("/").filter(Boolean).at(-1) || model;
+}
+
+function renderActiveModel(viewName = "chat") {
+  const node = $("#cloud-model");
+  if (!node || !cloudStatus) return;
+  const agentView = viewName === "agent";
+  const rawModel = agentView ? cloudStatus.agent_model : cloudStatus.model;
+  node.textContent = `${agentView ? "โมเดล Agent" : "โมเดลแชท"} · ${modelLabel(rawModel)}`;
+  node.title = `แชท: ${cloudStatus.model || "ไม่ทราบ"}\nCodex Workflow: ${cloudStatus.agent_model || "ไม่ทราบ"}`;
+}
 
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
@@ -54,6 +74,7 @@ function showView(name) {
   $$(".nav-item").forEach((node) => node.classList.toggle("active", node.dataset.view === name));
   const titles = { chat: "MyCodex", agent: "Codex workflow", remote: "Remote คอม", memory: "ความจำและ RAG", files: "ไฟล์แนบ", images: "Image Studio", music: "Music Lab", notifications: "การแจ้งเตือน", account: "บัญชีและความปลอดภัย", training: "Training Lab", system: "สถานะระบบ", admin: "ผู้ดูแลระบบ" };
   $("#view-title").textContent = titles[name] || "MyCodexAI";
+  renderActiveModel(name);
   closeSidebar();
   if (name === "agent") loadRuns();
   if (name === "remote") Promise.all([loadBridgeDevices(), loadBridgeJobs()]).catch((error) => toast(error.message));
@@ -712,8 +733,9 @@ async function boot() {
   $("#account-name").textContent = `@${account.username}`;
   $("#account-role").textContent = account.role === "admin" ? "ผู้ดูแลระบบ" : "ผู้ใช้ทั่วไป";
   if (account.role === "admin") $$(".admin-only").forEach((node) => node.classList.remove("hidden"));
-  const status = await api("/api/cloud/status");
-  $("#cloud-state").textContent = status.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
+  cloudStatus = await api("/api/cloud/status");
+  $("#cloud-state").textContent = cloudStatus.agent_configured ? "Cloudflare · Agent พร้อม" : "Cloudflare · ต้องเชื่อม GitHub";
+  renderActiveModel("chat");
   await Promise.all([loadHistory(), loadFiles(), loadImageStatus(), loadWorkspaces(), loadNotifications(false), loadBridgeDevices(), loadBridgeJobs()]);
   connectRealtime();
   const query = new URLSearchParams(location.search);
