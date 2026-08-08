@@ -73,6 +73,8 @@
 	},
 	"vars": {
 		"AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
+		"CHAT_AI_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8",
+		"AGENT_AI_MODEL": "@cf/google/gemma-4-26b-a4b-it",
 		"IMAGE_MODEL": "@cf/black-forest-labs/flux-2-klein-9b",
 		"EMBEDDING_MODEL": "@cf/qwen/qwen3-embedding-0.6b",
 		"GITHUB_OWNER": "RhysRz",
