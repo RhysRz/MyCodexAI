@@ -817,3 +817,5 @@ $("#revoke-sessions").addEventListener("click", async () => { await api("/api/au
 $("#logout").addEventListener("click", async () => { await api("/api/auth/logout", { method: "POST", body: "{}" }); location.replace("/login"); });
 
 boot().catch((error) => toast(error.message));
+
+// Build trigger: deploy cloud model status UI.
