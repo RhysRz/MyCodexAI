@@ -20,6 +20,8 @@ export interface Env {
   /** Optional until R2 is enabled for this Cloudflare account. */
   OBJECTS?: R2Bucket;
   AI_MODEL: string;
+  CHAT_AI_MODEL?: string;
+  AGENT_AI_MODEL?: string;
   IMAGE_MODEL?: string;
   EMBEDDING_MODEL?: string;
   GITHUB_OWNER: string;
